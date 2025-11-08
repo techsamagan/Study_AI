@@ -28,51 +28,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for user details"""
-    is_pro = serializers.BooleanField(read_only=True)
-    plan_limits = serializers.SerializerMethodField()
     
     class Meta:
         model = User
-        fields = ('id', 'email', 'username', 'first_name', 'last_name', 'date_joined', 
-                  'plan_type', 'subscription_status', 'is_pro', 'plan_limits',
-                  'is_staff', 'is_superuser')
-    
-    def get_plan_limits(self, obj):
-        """Get plan limits for the user"""
-        limits = obj.get_plan_limits()
-        # Get current usage
-        from django.utils import timezone
-        from datetime import datetime
-        start_of_month = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        
-        from .models import Document, Summary, Flashcard
-        documents_count = Document.objects.filter(user=obj, uploaded_at__gte=start_of_month).count()
-        summaries_count = Summary.objects.filter(user=obj, created_at__gte=start_of_month).count()
-        flashcards_count = Flashcard.objects.filter(user=obj, created_at__gte=start_of_month).count()
-        
-        return {
-            'documents': {
-                'limit': limits['documents_per_month'],
-                'used': documents_count,
-                'remaining': limits['documents_per_month'] - documents_count if limits['documents_per_month'] != -1 else -1
-            },
-            'summaries': {
-                'limit': limits['summaries_per_month'],
-                'used': summaries_count,
-                'remaining': limits['summaries_per_month'] - summaries_count if limits['summaries_per_month'] != -1 else -1
-            },
-            'flashcards': {
-                'limit': limits['flashcards_per_month'],
-                'used': flashcards_count,
-                'remaining': limits['flashcards_per_month'] - flashcards_count if limits['flashcards_per_month'] != -1 else -1
-            },
-            'max_file_size_mb': limits['max_file_size_mb'],
-            'ai_generations': {
-                'limit': limits['ai_generations_per_month'],
-                'used': summaries_count + Flashcard.objects.filter(user=obj, created_at__gte=start_of_month, document__isnull=False).count(),
-                'remaining': limits['ai_generations_per_month'] - (summaries_count + Flashcard.objects.filter(user=obj, created_at__gte=start_of_month, document__isnull=False).count()) if limits['ai_generations_per_month'] != -1 else -1
-            }
-        }
+        fields = (
+            'id', 'email', 'username', 'first_name', 'last_name', 'date_joined',
+            'is_staff', 'is_superuser'
+        )
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):

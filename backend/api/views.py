@@ -1,12 +1,11 @@
-from rest_framework import viewsets, status, generics
+from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q, Avg
+from django.db.models import Avg
 from django.utils import timezone
-from django.core.files.storage import default_storage
 import PyPDF2
 import docx
 import os
@@ -17,11 +16,6 @@ from .serializers import (
     DocumentSerializer, SummarySerializer, FlashcardSerializer, FlashcardCreateSerializer
 )
 from .services import OpenAIService
-from .plan_limits import (
-    check_document_limit, check_summary_limit, check_flashcard_limit,
-    check_file_size_limit, check_ai_generation_limit
-)
-
 User = get_user_model()
 
 
@@ -79,19 +73,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not file:
             raise ValueError("No file provided")
         
-        # Calculate file size
-        file_size = file.size
-        
-        # Check file size limit
-        if not check_file_size_limit(self.request.user, file_size):
-            limits = self.request.user.get_plan_limits()
-            raise ValueError(f"File size exceeds your plan limit of {limits['max_file_size_mb']}MB. Upgrade to Pro for larger files.")
-        
-        # Check document upload limit
-        can_upload, remaining = check_document_limit(self.request.user)
-        if not can_upload:
-            raise ValueError(f"You've reached your monthly document upload limit. Upgrade to Pro for unlimited uploads.")
-        
         # Determine file type
         file_type = file.content_type or 'application/octet-stream'
         
@@ -110,7 +91,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         
         serializer.save(
             user=self.request.user,
-            file_size=file_size,
+            file_size=file.size,
             file_type=file_type,
             pages=pages
         )
@@ -123,22 +104,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if document.user != request.user:
             return Response(
                 {'error': 'Permission denied'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # Check AI generation limit
-        can_generate, remaining = check_ai_generation_limit(request.user)
-        if not can_generate:
-            return Response(
-                {'error': f'You\'ve reached your monthly AI generation limit. Upgrade to Pro for unlimited AI generations.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check summary limit
-        can_create, remaining_summaries = check_summary_limit(request.user)
-        if not can_create:
-            return Response(
-                {'error': f'You\'ve reached your monthly summary limit. Upgrade to Pro for unlimited summaries.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -181,22 +146,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if document.user != request.user:
             return Response(
                 {'error': 'Permission denied'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # Check AI generation limit
-        can_generate, remaining = check_ai_generation_limit(request.user)
-        if not can_generate:
-            return Response(
-                {'error': f'You\'ve reached your monthly AI generation limit. Upgrade to Pro for unlimited AI generations.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check flashcard limit
-        can_create, remaining_flashcards = check_flashcard_limit(request.user)
-        if not can_create:
-            return Response(
-                {'error': f'You\'ve reached your monthly flashcard limit. Upgrade to Pro for unlimited flashcards.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -298,22 +247,6 @@ class SummaryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Check AI generation limit
-        can_generate, remaining = check_ai_generation_limit(request.user)
-        if not can_generate:
-            return Response(
-                {'error': f'You\'ve reached your monthly AI generation limit. Upgrade to Pro for unlimited AI generations.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check flashcard limit
-        can_create, remaining_flashcards = check_flashcard_limit(request.user)
-        if not can_create:
-            return Response(
-                {'error': f'You\'ve reached your monthly flashcard limit. Upgrade to Pro for unlimited flashcards.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
         num_cards = request.data.get('num_cards', 10)
         try:
             num_cards = int(num_cards)
@@ -379,11 +312,6 @@ class FlashcardViewSet(viewsets.ModelViewSet):
         return FlashcardSerializer
 
     def perform_create(self, serializer):
-        # Check flashcard limit for manual creation
-        can_create, remaining = check_flashcard_limit(self.request.user)
-        if not can_create:
-            raise ValueError(f'You\'ve reached your monthly flashcard limit. Upgrade to Pro for unlimited flashcards.')
-        
         serializer.save(user=self.request.user)
 
     @action(detail=True, methods=['post'])
@@ -434,242 +362,7 @@ def dashboard_stats(request):
         'summaries_count': Summary.objects.filter(user=user).count(),
         'study_time': '0h',  # Can be implemented with study session tracking
         'mastery': int(mastery_value) if mastery_value else 0,
-        'plan_type': user.plan_type,
-        'is_pro': user.is_pro,
     }
     
     return Response(stats)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_checkout_session(request):
-    """Create Stripe checkout session for Pro plan upgrade"""
-    from django.conf import settings
-    import stripe
-    
-    # Check if Stripe is configured
-    if not settings.STRIPE_SECRET_KEY or not settings.PRO_PLAN_PRICE_ID:
-        error_msg = (
-            'Stripe payment is not configured. '
-            'Please add STRIPE_SECRET_KEY and PRO_PLAN_PRICE_ID to your backend/.env file. '
-            'See backend/STRIPE_SETUP.md for detailed setup instructions.'
-        )
-        return Response(
-            {'error': error_msg},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-    stripe.api_key = settings.STRIPE_SECRET_KEY
-    user = request.user
-    
-    # Check if user is already Pro
-    if user.is_pro:
-        return Response(
-            {'error': 'You already have an active Pro subscription.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    try:
-        # Create or retrieve Stripe customer
-        if not user.stripe_customer_id:
-            customer = stripe.Customer.create(
-                email=user.email,
-                name=f"{user.first_name} {user.last_name}".strip() or user.username,
-                metadata={'user_id': user.id}
-            )
-            user.stripe_customer_id = customer.id
-            user.save()
-        else:
-            customer = stripe.Customer.retrieve(user.stripe_customer_id)
-        
-        # Create checkout session
-        checkout_session = stripe.checkout.Session.create(
-            customer=customer.id,
-            payment_method_types=['card'],
-            line_items=[{
-                'price': settings.PRO_PLAN_PRICE_ID,
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url=f'{settings.FRONTEND_URL}/settings?success=true&session_id={{CHECKOUT_SESSION_ID}}',
-            cancel_url=f'{settings.FRONTEND_URL}/settings?canceled=true',
-            metadata={
-                'user_id': user.id,
-            },
-        )
-        
-        return Response({
-            'checkout_url': checkout_session.url,
-            'session_id': checkout_session.id
-        }, status=status.HTTP_200_OK)
-        
-    except stripe.error.StripeError as e:
-        import traceback
-        print(f"Stripe Error: {str(e)}")
-        print(traceback.format_exc())
-        return Response(
-            {'error': f'Stripe error: {str(e)}'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    except Exception as e:
-        import traceback
-        print(f"Error creating checkout session: {str(e)}")
-        print(traceback.format_exc())
-        return Response(
-            {'error': f'An error occurred: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def verify_payment(request):
-    """Verify payment and upgrade user to Pro after successful payment"""
-    from django.conf import settings
-    import stripe
-    
-    if not settings.STRIPE_SECRET_KEY:
-        return Response(
-            {'error': 'Stripe is not configured.'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-    stripe.api_key = settings.STRIPE_SECRET_KEY
-    session_id = request.data.get('session_id')
-    
-    if not session_id:
-        return Response(
-            {'error': 'Session ID is required.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    try:
-        # Retrieve the checkout session
-        session = stripe.checkout.Session.retrieve(session_id)
-        
-        # Verify the session belongs to the current user
-        if session.metadata.get('user_id') != str(request.user.id):
-            return Response(
-                {'error': 'Invalid session.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Check if payment was successful
-        if session.payment_status == 'paid':
-            # Retrieve subscription
-            subscription = stripe.Subscription.retrieve(session.subscription)
-            
-            # Upgrade user to Pro
-            user = request.user
-            user.plan_type = 'pro'
-            user.subscription_status = 'active'
-            user.stripe_subscription_id = subscription.id
-            user.subscription_start_date = timezone.now()
-            # Set end date based on subscription period
-            if subscription.current_period_end:
-                from datetime import datetime
-                user.subscription_end_date = datetime.fromtimestamp(subscription.current_period_end)
-            else:
-                from datetime import timedelta
-                user.subscription_end_date = timezone.now() + timedelta(days=30)
-            user.save()
-            
-            serializer = UserSerializer(user)
-            return Response({
-                'message': 'Successfully upgraded to Pro plan!',
-                'user': serializer.data
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response(
-                {'error': 'Payment not completed.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-            
-    except stripe.error.StripeError as e:
-        return Response(
-            {'error': str(e)},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    except Exception as e:
-        return Response(
-            {'error': 'An error occurred while verifying payment.'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
-
-@csrf_exempt
-@api_view(['POST'])
-@permission_classes([AllowAny])  # Webhook doesn't use JWT
-def stripe_webhook(request):
-    """Handle Stripe webhook events"""
-    from django.conf import settings
-    import stripe
-    import json
-    
-    if not settings.STRIPE_SECRET_KEY or not settings.STRIPE_WEBHOOK_SECRET:
-        return Response(
-            {'error': 'Stripe webhook is not configured.'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-    stripe.api_key = settings.STRIPE_SECRET_KEY
-    payload = request.body
-    sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-    
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
-        )
-    except ValueError:
-        return Response({'error': 'Invalid payload'}, status=status.HTTP_400_BAD_REQUEST)
-    except stripe.error.SignatureVerificationError:
-        return Response({'error': 'Invalid signature'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Handle the event
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        user_id = session['metadata'].get('user_id')
-        
-        if user_id:
-            try:
-                user = User.objects.get(id=int(user_id))
-                subscription = stripe.Subscription.retrieve(session['subscription'])
-                
-                user.plan_type = 'pro'
-                user.subscription_status = 'active'
-                user.stripe_subscription_id = subscription.id
-                user.subscription_start_date = timezone.now()
-                if subscription.current_period_end:
-                    from datetime import datetime
-                    user.subscription_end_date = datetime.fromtimestamp(subscription.current_period_end)
-                user.save()
-            except User.DoesNotExist:
-                pass
-    
-    elif event['type'] == 'customer.subscription.deleted':
-        subscription = event['data']['object']
-        try:
-            user = User.objects.get(stripe_subscription_id=subscription['id'])
-            user.plan_type = 'free'
-            user.subscription_status = 'cancelled'
-            user.stripe_subscription_id = None
-            user.save()
-        except User.DoesNotExist:
-            pass
-    
-    elif event['type'] == 'invoice.payment_failed':
-        invoice = event['data']['object']
-        try:
-            subscription = stripe.Subscription.retrieve(invoice['subscription'])
-            user = User.objects.get(stripe_subscription_id=subscription.id)
-            user.subscription_status = 'past_due'
-            user.save()
-        except (User.DoesNotExist, stripe.error.StripeError):
-            pass
-    
-    return Response({'status': 'success'}, status=status.HTTP_200_OK)
 

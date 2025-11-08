@@ -1,24 +1,12 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
 
 // Types
-export interface PlanLimits {
-  documents: { limit: number; used: number; remaining: number };
-  summaries: { limit: number; used: number; remaining: number };
-  flashcards: { limit: number; used: number; remaining: number };
-  max_file_size_mb: number;
-  ai_generations: { limit: number; used: number; remaining: number };
-}
-
 export interface User {
   id: number;
   email: string;
   username: string;
   first_name: string;
   last_name: string;
-  plan_type: 'free' | 'pro';
-  subscription_status: string;
-  is_pro: boolean;
-  plan_limits?: PlanLimits;
   is_staff?: boolean;
   is_superuser?: boolean;
   date_joined?: string;
@@ -70,8 +58,6 @@ export interface DashboardStats {
   summaries_count: number;
   study_time: string;
   mastery: number;
-  plan_type?: string;
-  is_pro?: boolean;
 }
 
 // API Client
@@ -285,29 +271,14 @@ class ApiClient {
     return this.request<DashboardStats>('/dashboard/stats/');
   }
 
-  // Subscription
-  async createCheckoutSession(): Promise<{ checkout_url: string; session_id: string }> {
-    return this.request<{ checkout_url: string; session_id: string }>('/subscription/checkout/', {
-      method: 'POST',
-    });
-  }
-
-  async verifyPayment(sessionId: string): Promise<{ message: string; user: User }> {
-    return this.request<{ message: string; user: User }>('/subscription/verify/', {
-      method: 'POST',
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-  }
-
   // Admin endpoints
   async getAdminDashboardStats(): Promise<any> {
     return this.request<any>('/admin/dashboard/stats/');
   }
 
-  async getAdminUsers(params?: { page?: number; plan_type?: string; search?: string }): Promise<{ results: User[]; count: number; next: string | null; previous: string | null } | User[]> {
+  async getAdminUsers(params?: { page?: number; search?: string }): Promise<{ results: User[]; count: number; next: string | null; previous: string | null } | User[]> {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.plan_type) queryParams.append('plan_type', params.plan_type);
     if (params?.search) queryParams.append('search', params.search);
     
     const query = queryParams.toString();
@@ -322,18 +293,6 @@ class ApiClient {
     return this.request<User>(`/admin/users/${userId}/`, {
       method: 'PATCH',
       body: JSON.stringify(data),
-    });
-  }
-
-  async adminUpgradeUser(userId: number): Promise<{ message: string; user: User }> {
-    return this.request<{ message: string; user: User }>(`/admin/users/${userId}/upgrade/`, {
-      method: 'POST',
-    });
-  }
-
-  async adminDowngradeUser(userId: number): Promise<{ message: string; user: User }> {
-    return this.request<{ message: string; user: User }>(`/admin/users/${userId}/downgrade/`, {
-      method: 'POST',
     });
   }
 

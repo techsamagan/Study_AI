@@ -1,63 +1,56 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, RotateCw, Check, X, Trophy, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCw, Check, X, Trophy, Target, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
-
-interface Flashcard {
-  id: number;
-  question: string;
-  answer: string;
-  category: string;
-}
-
-const studyCards: Flashcard[] = [
-  {
-    id: 1,
-    question: 'What is machine learning?',
-    answer: 'Machine learning is a subset of AI that enables systems to learn and improve from experience without being explicitly programmed.',
-    category: 'Fundamentals',
-  },
-  {
-    id: 2,
-    question: 'What are the three main types of machine learning?',
-    answer: 'Supervised learning, unsupervised learning, and reinforcement learning.',
-    category: 'Fundamentals',
-  },
-  {
-    id: 3,
-    question: 'What is overfitting?',
-    answer: 'Overfitting occurs when a model learns the training data too well, including noise, reducing its ability to generalize to new data.',
-    category: 'Concepts',
-  },
-  {
-    id: 4,
-    question: 'What is the purpose of cross-validation?',
-    answer: 'Cross-validation is used to assess how well a model will generalize to an independent dataset and to prevent overfitting.',
-    category: 'Concepts',
-  },
-  {
-    id: 5,
-    question: 'What is a neural network?',
-    answer: 'A neural network is a series of algorithms that mimic the operations of a human brain to recognize relationships in data.',
-    category: 'Algorithms',
-  },
-];
+import { apiClient, type Flashcard as FlashcardType } from '../services/api';
 
 export function StudyModeView() {
+  const [flashcards, setFlashcards] = useState<FlashcardType[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [masteredCards, setMasteredCards] = useState<number[]>([]);
   const [needsPracticeCards, setNeedsPracticeCards] = useState<number[]>([]);
   const [isComplete, setIsComplete] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
 
-  const currentCard = studyCards[currentIndex];
-  const progress = ((currentIndex + 1) / studyCards.length) * 100;
+  useEffect(() => {
+    loadFlashcards();
+  }, []);
+
+  const loadFlashcards = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const cards = await apiClient.getFlashcards();
+      if (!cards || cards.length === 0) {
+        setFlashcards([]);
+        setIsComplete(false);
+        setCurrentIndex(0);
+        return;
+      }
+      setFlashcards(cards);
+      setCurrentIndex(0);
+      setIsFlipped(false);
+      setMasteredCards([]);
+      setNeedsPracticeCards([]);
+      setIsComplete(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load flashcards for study mode');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const currentCard = flashcards[currentIndex];
+  const totalCards = flashcards.length;
+  const progress = totalCards > 0 ? ((currentIndex + 1) / totalCards) * 100 : 0;
 
   const handleNext = () => {
-    if (currentIndex < studyCards.length - 1) {
+    if (currentIndex < totalCards - 1) {
       setCurrentIndex(currentIndex + 1);
       setIsFlipped(false);
     } else {
@@ -73,16 +66,30 @@ export function StudyModeView() {
   };
 
   const handleMastered = () => {
+    if (!currentCard) return;
+
     if (!masteredCards.includes(currentCard.id)) {
       setMasteredCards([...masteredCards, currentCard.id]);
     }
+
+    apiClient.reviewFlashcard(currentCard.id, 100).catch(() => {
+      // Ignore review errors for now
+    });
+
     handleNext();
   };
 
   const handleNeedsPractice = () => {
+    if (!currentCard) return;
+
     if (!needsPracticeCards.includes(currentCard.id)) {
       setNeedsPracticeCards([...needsPracticeCards, currentCard.id]);
     }
+
+    apiClient.reviewFlashcard(currentCard.id, Math.max(currentCard.mastery_level - 10, 0)).catch(() => {
+      // Ignore review errors for now
+    });
+
     handleNext();
   };
 
@@ -94,8 +101,36 @@ export function StudyModeView() {
     setIsComplete(false);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
+
+  if (!loading && (!flashcards || flashcards.length === 0)) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-8 text-center">
+          <h2 className="mb-3">No flashcards available yet</h2>
+          <p className="text-muted-foreground mb-6">
+            Create flashcards or generate them from a document to start a study session.
+          </p>
+          <Button onClick={loadFlashcards} className="gradient-blue-purple text-white border-0">
+            Refresh
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!currentCard) {
+    return null;
+  }
+
   if (isComplete) {
-    const masteryPercentage = Math.round((masteredCards.length / studyCards.length) * 100);
+    const masteryPercentage = totalCards > 0 ? Math.round((masteredCards.length / totalCards) * 100) : 0;
 
     return (
       <div className="space-y-6">
@@ -162,7 +197,7 @@ export function StudyModeView() {
         <div>
           <h1>Study Mode</h1>
           <p className="text-muted-foreground mt-1">
-            Card {currentIndex + 1} of {studyCards.length}
+            Card {currentIndex + 1} of {totalCards}
           </p>
         </div>
         <Button variant="outline" onClick={handleRestart}>
@@ -258,7 +293,7 @@ export function StudyModeView() {
         </div>
 
         <div className="flex items-center justify-center gap-2 mt-6">
-          {studyCards.map((_, index) => (
+          {flashcards.map((_, index) => (
             <motion.div
               key={index}
               className={`h-2 rounded-full transition-all ${

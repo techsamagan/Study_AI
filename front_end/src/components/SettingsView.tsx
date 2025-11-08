@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { User, Mail, UserCircle, Save, Loader2, LogOut, Bell, Shield, Globe, Crown, Zap, CheckCircle } from 'lucide-react';
+import { User, Mail, UserCircle, Save, Loader2, LogOut, Bell, Shield, Globe } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
-import { Badge } from './ui/badge';
 import { apiClient, type User as UserType, getStoredUser, setStoredUser } from '../services/api';
 
 interface SettingsViewProps {
@@ -20,7 +19,6 @@ export function SettingsView({ onLogout }: SettingsViewProps) {
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
   const [editing, setEditing] = useState(false);
-  const [upgrading, setUpgrading] = useState(false);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -105,66 +103,6 @@ export function SettingsView({ onLogout }: SettingsViewProps) {
     }
   };
 
-  const handleUpgrade = async () => {
-    try {
-      setUpgrading(true);
-      setError('');
-      setSuccess('');
-      
-      // Create Stripe checkout session
-      const response = await apiClient.createCheckoutSession();
-      
-      // Check if we got a checkout URL
-      if (response.checkout_url) {
-        // Redirect to Stripe checkout
-        window.location.href = response.checkout_url;
-      } else {
-        throw new Error('No checkout URL received from server');
-      }
-    } catch (err: any) {
-      console.error('Upgrade error:', err);
-      const errorMessage = err.message || 'Failed to create checkout session. Please try again.';
-      setError(errorMessage);
-      setUpgrading(false);
-      
-      // Show error for longer if it's a configuration issue
-      if (errorMessage.includes('not configured') || errorMessage.includes('Stripe')) {
-        setTimeout(() => setError(''), 10000);
-      } else {
-        setTimeout(() => setError(''), 5000);
-      }
-    }
-  };
-
-  // Check for payment success on component mount
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const success = urlParams.get('success');
-    const sessionId = urlParams.get('session_id');
-    const canceled = urlParams.get('canceled');
-
-    if (success === 'true' && sessionId) {
-      // Verify payment and upgrade user
-      apiClient.verifyPayment(sessionId)
-        .then((response) => {
-          setUser(response.user);
-          setStoredUser(response.user);
-          setSuccess('Successfully upgraded to Pro plan!');
-          // Clean URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setTimeout(() => setSuccess(''), 5000);
-        })
-        .catch((err: any) => {
-          setError(err.message || 'Failed to verify payment. Please contact support.');
-        });
-    } else if (canceled === 'true') {
-      setError('Payment was canceled. You can try again anytime.');
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      setTimeout(() => setError(''), 5000);
-    }
-  }, []);
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -194,87 +132,6 @@ export function SettingsView({ onLogout }: SettingsViewProps) {
         <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-600">
           {success}
         </div>
-      )}
-
-      {/* Plan Status Card */}
-      {user && (
-        <Card className={`p-6 ${user.is_pro ? 'bg-gradient-to-br from-purple-50 to-blue-50 border-purple-200' : 'border-blue-200'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${user.is_pro ? 'gradient-blue-purple' : 'bg-blue-100'}`}>
-                {user.is_pro ? (
-                  <Crown className="w-6 h-6 text-white" />
-                ) : (
-                  <Zap className="w-6 h-6 text-blue-600" />
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-lg">
-                    {user.is_pro ? 'Pro Plan' : 'Free Plan'}
-                  </h3>
-                  {user.is_pro && (
-                    <Badge className="bg-purple-600 text-white">Active</Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {user.is_pro 
-                    ? 'Unlimited access to all features'
-                    : 'Upgrade to Pro for unlimited features'
-                  }
-                </p>
-              </div>
-            </div>
-            {!user.is_pro && (
-              <Button
-                onClick={handleUpgrade}
-                disabled={upgrading}
-                className="gradient-blue-purple text-white border-0"
-              >
-                {upgrading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Upgrading...
-                  </>
-                ) : (
-                  <>
-                    <Crown className="w-4 h-4 mr-2" />
-                    Upgrade to Pro
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
-          
-          {user.plan_limits && (
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="p-3 bg-white rounded-lg">
-                <p className="text-xs text-muted-foreground mb-1">Documents</p>
-                <p className="text-sm font-semibold">
-                  {user.plan_limits.documents.remaining === -1 ? '∞' : `${user.plan_limits.documents.remaining}/${user.plan_limits.documents.limit}`}
-                </p>
-              </div>
-              <div className="p-3 bg-white rounded-lg">
-                <p className="text-xs text-muted-foreground mb-1">Summaries</p>
-                <p className="text-sm font-semibold">
-                  {user.plan_limits.summaries.remaining === -1 ? '∞' : `${user.plan_limits.summaries.remaining}/${user.plan_limits.summaries.limit}`}
-                </p>
-              </div>
-              <div className="p-3 bg-white rounded-lg">
-                <p className="text-xs text-muted-foreground mb-1">Flashcards</p>
-                <p className="text-sm font-semibold">
-                  {user.plan_limits.flashcards.remaining === -1 ? '∞' : `${user.plan_limits.flashcards.remaining}/${user.plan_limits.flashcards.limit}`}
-                </p>
-              </div>
-              <div className="p-3 bg-white rounded-lg">
-                <p className="text-xs text-muted-foreground mb-1">File Size</p>
-                <p className="text-sm font-semibold">
-                  {user.plan_limits.max_file_size_mb}MB
-                </p>
-              </div>
-            </div>
-          )}
-        </Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

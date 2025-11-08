@@ -126,7 +126,7 @@ const App: React.FC<LandingPageProps> = ({ onLogin }) => {
         { name: 'Features', href: '#features' },
         { name: 'How It Works', href: '#how-it-works' },
         { name: 'Testimonials', href: '#testimonials' },
-        { name: 'Pricing', href: '#pricing' },
+        { name: 'Get Started', href: '#get-started' },
     ];
 
     return (
@@ -434,57 +434,16 @@ const App: React.FC<LandingPageProps> = ({ onLogin }) => {
                     </div>
                 </section>
 
-                {/* 6. Pricing or Call to Action */}
-                <section id="pricing" className="py-20 md:py-28 bg-gradient-to-tr from-indigo-50 to-purple-50">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <h2 className="text-4xl font-bold text-center mb-4 text-gray-900">Start Learning Faster — It's Free to Try</h2>
-                        <p className="text-xl text-gray-600 text-center max-w-2xl mx-auto mb-16">Unlock your potential with our flexible plans built for every student.</p>
-
-                        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-                            
-                            {/* Free Plan */}
-                            <div className="bg-white p-8 rounded-2xl shadow-xl border-4 border-white transition-all duration-300 hover:shadow-2xl">
-                                <h3 className="text-2xl font-bold mb-3 text-gray-900">Free</h3>
-                                <p className="text-gray-500 mb-6">Perfect for quick summaries and trying out the AI.</p>
-                                <p className="text-5xl font-extrabold text-indigo-600 mb-6">$0<span className="text-xl font-normal text-gray-500">/month</span></p>
-                                <ul className="space-y-3 mb-8 text-gray-700">
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> 10 Document Uploads/Month</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Basic Summaries</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Standard Flashcards</li>
-                                </ul>
-                                <SecondaryButton>Get Started Free</SecondaryButton>
-                            </div>
-
-                            {/* Pro Plan - Highlighted */}
-                            <div className="bg-white p-8 rounded-2xl shadow-2xl border-4 border-purple-500 transition-all duration-300 transform scale-[1.05]">
-                                <div className="text-center text-sm font-bold text-white bg-purple-500 rounded-full py-1 px-4 mb-4 inline-block">MOST POPULAR</div>
-                                <h3 className="text-2xl font-bold mb-3 text-gray-900">Pro</h3>
-                                <p className="text-gray-500 mb-6">Unlimited power for academic deep dives and heavy studying.</p>
-                                <p className="text-5xl font-extrabold text-purple-600 mb-6">$9<span className="text-xl font-normal text-gray-500">/month</span></p>
-                                <ul className="space-y-3 mb-8 text-gray-700">
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Unlimited Uploads</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Advanced Deep Summaries</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Quizzes & Adaptive Learning</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Progress Tracking Dashboard</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Priority Support</li>
-                                </ul>
-                                <PrimaryButton>Start 7-Day Free Trial</PrimaryButton>
-                            </div>
-
-                            {/* Team Plan */}
-                            <div className="bg-white p-8 rounded-2xl shadow-xl border-4 border-white transition-all duration-300 hover:shadow-2xl">
-                                <h3 className="text-2xl font-bold mb-3 text-gray-900">Team</h3>
-                                <p className="text-gray-500 mb-6">For study groups and small classrooms.</p>
-                                <p className="text-5xl font-extrabold text-indigo-600 mb-6">Custom<span className="text-xl font-normal text-gray-500">/user</span></p>
-                                <ul className="space-y-3 mb-8 text-gray-700">
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Everything in Pro</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Centralized Billing</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Shared Study Libraries</li>
-                                    <li className="flex items-center"><CheckCircle className="w-5 h-5 text-green-500 mr-2"/> Dedicated Account Manager</li>
-                                </ul>
-                                <SecondaryButton>Contact Sales</SecondaryButton>
-                            </div>
-
+                {/* 6. Call to Action */}
+                <section id="get-started" className="py-20 md:py-28 bg-gradient-to-tr from-indigo-50 to-purple-50">
+                    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                        <h2 className="text-4xl font-bold text-gray-900 mb-4">Start Learning Faster Today</h2>
+                        <p className="text-xl text-gray-600 mb-10">
+                            Join thousands of learners using AI to summarize documents, build smart flashcards, and stay ahead in their studies. Everything you need to boost your productivity in one place.
+                        </p>
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                            <PrimaryButton>Get Started for Free</PrimaryButton>
+                            <SecondaryButton>Watch Product Tour</SecondaryButton>
                         </div>
                     </div>
                 </section>
@@ -508,7 +467,7 @@ const App: React.FC<LandingPageProps> = ({ onLogin }) => {
                             <h4 className="text-lg font-semibold mb-4 text-indigo-400">Product</h4>
                             <ul className="space-y-2 text-sm text-gray-400">
                                 <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
-                                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
+                                <li><a href="#get-started" className="hover:text-white transition-colors">Get Started</a></li>
                                 <li><a href="#" className="hover:text-white transition-colors">How it Works</a></li>
                             </ul>
                         </div>

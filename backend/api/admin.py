@@ -2,22 +2,17 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.urls import reverse
-from django.utils import timezone
 from .models import User, Document, Summary, Flashcard
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ['email', 'username', 'full_name', 'plan_type', 'subscription_status', 'is_pro_badge', 'is_staff', 'created_at']
-    list_filter = ['is_staff', 'is_superuser', 'plan_type', 'subscription_status', 'created_at']
+    list_display = ['email', 'username', 'full_name', 'is_staff', 'created_at']
+    list_filter = ['is_staff', 'is_superuser', 'created_at']
     search_fields = ['email', 'username', 'first_name', 'last_name']
-    readonly_fields = ['created_at', 'updated_at', 'stripe_customer_id', 'stripe_subscription_id']
+    readonly_fields = ['created_at', 'updated_at']
     
     fieldsets = BaseUserAdmin.fieldsets + (
-        ('Subscription Information', {
-            'fields': ('plan_type', 'subscription_status', 'subscription_start_date', 'subscription_end_date', 
-                      'stripe_customer_id', 'stripe_subscription_id')
-        }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at')
         }),
@@ -26,13 +21,6 @@ class UserAdmin(BaseUserAdmin):
     def full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip() or "-"
     full_name.short_description = 'Full Name'
-    
-    def is_pro_badge(self, obj):
-        if obj.is_pro:
-            return format_html('<span style="color: green; font-weight: bold;">✓ Pro</span>')
-        return format_html('<span style="color: gray;">Free</span>')
-    is_pro_badge.short_description = 'Plan Status'
-    is_pro_badge.boolean = True
 
 
 @admin.register(Document)

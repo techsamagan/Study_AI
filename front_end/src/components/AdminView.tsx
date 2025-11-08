@@ -1,18 +1,14 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Users, FileText, Brain, TrendingUp, Crown, UserCircle, Search, Filter, ArrowUpDown, CheckCircle, XCircle } from 'lucide-react';
+import { Users, FileText, Brain, TrendingUp, UserCircle, Search } from 'lucide-react';
 import { Card } from './ui/card';
-import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { apiClient, type User } from '../services/api';
 
 interface AdminStats {
   users: {
     total: number;
-    pro: number;
-    free: number;
     recent_signups: number;
   };
   content: {
@@ -23,29 +19,21 @@ interface AdminStats {
     recent_summaries: number;
     recent_flashcards: number;
   };
-  subscriptions: {
-    active_pro: number;
-  };
-}
-
-interface AdminUser extends User {
-  plan_limits?: any;
 }
 
 export function AdminView() {
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [planFilter, setPlanFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     loadDashboardStats();
     loadUsers();
-  }, [planFilter, currentPage, searchTerm]);
+  }, [currentPage, searchTerm]);
 
   const loadDashboardStats = async () => {
     try {
@@ -60,9 +48,6 @@ export function AdminView() {
     try {
       setLoading(true);
       const params: any = { page: currentPage };
-      if (planFilter !== 'all') {
-        params.plan_type = planFilter;
-      }
       if (searchTerm) {
         params.search = searchTerm;
       }
@@ -83,30 +68,6 @@ export function AdminView() {
       setError(err.message || 'Failed to load users');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleUpgradeUser = async (userId: number) => {
-    if (!confirm('Are you sure you want to upgrade this user to Pro?')) return;
-    
-    try {
-      await apiClient.adminUpgradeUser(userId);
-      await loadUsers();
-      await loadDashboardStats();
-    } catch (err: any) {
-      setError(err.message || 'Failed to upgrade user');
-    }
-  };
-
-  const handleDowngradeUser = async (userId: number) => {
-    if (!confirm('Are you sure you want to downgrade this user to Free?')) return;
-    
-    try {
-      await apiClient.adminDowngradeUser(userId);
-      await loadUsers();
-      await loadDashboardStats();
-    } catch (err: any) {
-      setError(err.message || 'Failed to downgrade user');
     }
   };
 
@@ -146,23 +107,21 @@ export function AdminView() {
               </div>
               <UserCircle className="w-8 h-8 text-blue-600" />
             </div>
-            <div className="mt-4 flex gap-2 text-xs">
-              <span className="text-green-600">{stats.users.pro} Pro</span>
-              <span className="text-gray-400">•</span>
-              <span className="text-gray-600">{stats.users.free} Free</span>
-            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              {stats.users.recent_signups} new users (30 days)
+            </p>
           </Card>
 
           <Card className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Pro Subscriptions</p>
-                <p className="text-2xl font-bold mt-1">{stats.subscriptions.active_pro}</p>
+                <p className="text-sm text-muted-foreground">Recent Growth</p>
+                <p className="text-2xl font-bold mt-1">{stats.users.recent_signups}</p>
               </div>
-              <Crown className="w-8 h-8 text-purple-600" />
+              <TrendingUp className="w-8 h-8 text-purple-600" />
             </div>
             <p className="text-xs text-muted-foreground mt-4">
-              {stats.users.recent_signups} new users (30 days)
+              Signups in the last 30 days
             </p>
           </Card>
 
@@ -208,19 +167,6 @@ export function AdminView() {
               }}
               className="w-64"
             />
-            <Select value={planFilter} onValueChange={(value) => {
-              setPlanFilter(value);
-              setCurrentPage(1);
-            }}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by plan" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Plans</SelectItem>
-                <SelectItem value="free">Free</SelectItem>
-                <SelectItem value="pro">Pro</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -235,10 +181,8 @@ export function AdminView() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-3">User</th>
-                    <th className="text-left p-3">Plan</th>
-                    <th className="text-left p-3">Status</th>
+                    <th className="text-left p-3">Role</th>
                     <th className="text-left p-3">Joined</th>
-                    <th className="text-right p-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -251,47 +195,12 @@ export function AdminView() {
                         </div>
                       </td>
                       <td className="p-3">
-                        {user.is_pro ? (
-                          <Badge className="bg-purple-600 text-white">
-                            <Crown className="w-3 h-3 mr-1" />
-                            Pro
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">Free</Badge>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <Badge variant={user.subscription_status === 'active' ? 'default' : 'secondary'}>
-                          {user.subscription_status}
+                        <Badge variant={user.is_staff ? 'default' : 'secondary'}>
+                          {user.is_staff ? 'Admin' : 'Member'}
                         </Badge>
                       </td>
                       <td className="p-3 text-sm text-muted-foreground">
                         {new Date(user.date_joined || '').toLocaleDateString()}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex gap-2 justify-end">
-                          {!user.is_pro ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleUpgradeUser(user.id)}
-                              className="text-green-600"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Upgrade
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDowngradeUser(user.id)}
-                              className="text-red-600"
-                            >
-                              <XCircle className="w-4 h-4 mr-1" />
-                              Downgrade
-                            </Button>
-                          )}
-                        </div>
                       </td>
                     </tr>
                   ))}

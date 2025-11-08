@@ -201,13 +201,6 @@ CORS_ALLOW_CREDENTIALS = True
 # OpenAI API Key
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 
-# Stripe Configuration
-STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
-STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')
-STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET', default='')
-PRO_PLAN_PRICE_ID = config('PRO_PLAN_PRICE_ID', default='')  # Stripe Price ID for Pro plan
-FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
-
 # File upload settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760  # 10MB

@@ -9,8 +9,7 @@ A comprehensive AI-powered learning assistant application with document summariz
 - **Flashcard Generation**: Automatically create flashcards from documents
 - **Study Mode**: Interactive study sessions with spaced repetition
 - **User Management**: Registration, authentication, and profile management
-- **Subscription System**: Free and Pro plans with Stripe integration
-- **Admin Dashboard**: Comprehensive admin interface for user and content management
+- **Analytics Dashboard**: Monitor usage metrics from the admin interface
 
 ## 📁 Project Structure
 
@@ -34,7 +33,6 @@ ai_project/
 - **PostgreSQL**: Database
 - **Redis**: Caching and session management
 - **OpenAI API**: AI-powered content generation
-- **Stripe**: Payment processing
 
 ### Frontend
 - **React 18+**: UI framework
@@ -133,13 +131,6 @@ REDIS_URL=redis://localhost:6379/0
 
 # OpenAI
 OPENAI_API_KEY=your-openai-api-key
-
-# Stripe (optional)
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-PRO_PLAN_PRICE_ID=price_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-FRONTEND_URL=http://localhost:3000
 ```
 
 ### Frontend (.env)
@@ -172,18 +163,6 @@ The application uses JWT (JSON Web Tokens) for authentication:
 - Access tokens expire in 15 minutes
 - Refresh tokens expire in 7 days
 - Tokens are stored in localStorage
-
-## 💳 Stripe Integration
-
-For Pro plan subscriptions, set up Stripe:
-
-1. Create a Stripe account
-2. Get API keys from Stripe Dashboard
-3. Create a product and price for Pro plan
-4. Set up webhook endpoint
-5. Add keys to `backend/.env`
-
-See `backend/STRIPE_SETUP.md` for detailed instructions.
 
 ## 👨‍💼 Admin Access
 
@@ -222,8 +201,8 @@ See `backend/STRIPE_SETUP.md` for detailed instructions.
 - `GET /api/admin/dashboard/stats/` - Dashboard statistics
 - `GET /api/admin/users/` - List users
 - `GET /api/admin/users/{id}/` - Get user details
-- `POST /api/admin/users/{id}/upgrade/` - Upgrade user
-- `POST /api/admin/users/{id}/downgrade/` - Downgrade user
+- `PATCH /api/admin/users/{id}/` - Update user details (e.g., grant admin access)
+- `GET /api/admin/content/stats/` - Content statistics
 
 ## 🧪 Testing
 
