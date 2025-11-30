@@ -100,7 +100,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def generate_summary(self, request, pk=None):
         """Generate summary for a document"""
         document = self.get_object()
-        
+    
+
         if document.user != request.user:
             return Response(
                 {'error': 'Permission denied'},
@@ -110,15 +111,17 @@ class DocumentViewSet(viewsets.ModelViewSet):
         try:
             # Extract text from document
             text_content = self._extract_text_from_document(document)
-            
+
             if not text_content:
                 return Response(
                     {'error': 'Could not extract text from document'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+
             # Generate summary using OpenAI
             openai_service = OpenAIService()
+
             summary_data = openai_service.generate_summary(text_content)
 
             # Create summary object

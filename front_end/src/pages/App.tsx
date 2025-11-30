@@ -237,7 +237,7 @@ const App: React.FC<LandingPageProps> = ({ onLogin }) => {
                                         <div className="bg-purple-50 p-6 rounded-xl h-64 border border-purple-200 relative">
                                             <p className="text-lg font-semibold text-purple-800 mb-3">Key Summary:</p>
                                             <p className="text-sm text-gray-700 leading-relaxed">
-                                                Photosynthesis transforms light energy into chemical energy (sugars) using $CO_2$ and $H_2O$. This occurs in chloroplasts through light-dependent reactions and the Calvin cycle. The overall reaction is essential for nearly all life on Earth.
+                                            Photosynthesis transforms light energy into chemical energy (sugars) using CO₂ and H₂O. This occurs in chloroplasts through light-dependent reactions and the Calvin cycle. The overall reaction is essential for nearly all life on Earth.
                                             </p>
                                             <div className="absolute bottom-4 right-6 p-2 bg-purple-200 text-purple-800 rounded-full text-sm font-bold shadow-md">
                                                 <Zap className="w-4 h-4 inline-block mr-1"/> 42 Flashcards Generated!

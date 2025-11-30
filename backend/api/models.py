@@ -18,7 +18,7 @@ class Document(models.Model):
     title = models.CharField(max_length=255)
     file = models.FileField(upload_to='documents/')
     file_size = models.IntegerField(help_text="File size in bytes")
-    file_type = models.CharField(max_length=50, help_text="File MIME type")
+    file_type = models.CharField(max_length=255, help_text="File MIME type")
     pages = models.IntegerField(null=True, blank=True, help_text="Number of pages if applicable")
     uploaded_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

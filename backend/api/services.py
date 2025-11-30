@@ -1,3 +1,4 @@
+import openai
 from openai import OpenAI
 from django.conf import settings
 import json

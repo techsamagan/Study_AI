@@ -159,35 +159,6 @@ SIMPLE_JWT = {
     ],
 }
 
-# Redis Configuration
-REDIS_HOST = config('REDIS_HOST', default='localhost')
-REDIS_PORT = config('REDIS_PORT', default='6379')
-REDIS_DB = config('REDIS_DB', default='0')
-REDIS_PASSWORD = config('REDIS_PASSWORD', default=None)
-
-REDIS_URL = f"redis://{f':{REDIS_PASSWORD}@' if REDIS_PASSWORD else ''}{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
-
-# Cache Configuration (using Redis)
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': REDIS_URL,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-            'IGNORE_EXCEPTIONS': True,
-        },
-        'KEY_PREFIX': 'ai_learning_assistant',
-        'TIMEOUT': 300,  # 5 minutes default timeout
-    }
-}
-
-# Session Configuration (using Redis)
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
-
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
