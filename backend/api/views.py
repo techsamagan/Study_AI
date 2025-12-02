@@ -6,9 +6,18 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from django.db.models import Avg
 from django.utils import timezone
+from django.conf import settings
 import PyPDF2
 import docx
 import os
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .models import Document, Summary, Flashcard
 from .serializers import (
@@ -123,12 +132,19 @@ class DocumentViewSet(viewsets.ModelViewSet):
             openai_service = OpenAIService()
 
             summary_data = openai_service.generate_summary(text_content)
+            
+            # Validate summary_data structure
+            if not isinstance(summary_data, dict):
+                raise ValueError(f"Expected dict from OpenAI service, got {type(summary_data)}")
+            
+            if 'full_summary' not in summary_data:
+                raise ValueError(f"Missing 'full_summary' key in OpenAI response. Got keys: {list(summary_data.keys())}")
 
             # Create summary object
             summary = Summary.objects.create(
                 user=request.user,
                 document=document,
-                full_summary=summary_data['full_summary'],
+                full_summary=summary_data.get('full_summary', ''),
                 key_points=summary_data.get('key_points', [])
             )
 
@@ -136,8 +152,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
+            error_traceback = traceback.format_exc()
+            logger.error(f"Error generating summary for document {pk}: {str(e)}\n{error_traceback}")
             return Response(
-                {'error': str(e)},
+                {'error': str(e), 'detail': error_traceback if settings.DEBUG else 'An error occurred while generating the summary'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -201,33 +219,39 @@ class DocumentViewSet(viewsets.ModelViewSet):
             file_path = document.file.path
             file_type = document.file_type
 
+            if not os.path.exists(file_path):
+                logger.error(f"Document file not found: {file_path}")
+                return None
+
             if file_type == 'application/pdf':
                 with open(file_path, 'rb') as file:
                     pdf_reader = PyPDF2.PdfReader(file)
                     text = ''
                     for page in pdf_reader.pages:
                         text += page.extract_text() + '\n'
-                    return text
+                    return text.strip()
 
             elif file_type in ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword']:
                 doc = docx.Document(file_path)
                 text = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-                return text
+                return text.strip()
 
             elif file_type == 'text/plain':
                 with open(file_path, 'r', encoding='utf-8') as file:
-                    return file.read()
+                    return file.read().strip()
 
             else:
                 # Try to read as text anyway
                 try:
                     with open(file_path, 'r', encoding='utf-8') as file:
-                        return file.read()
-                except:
+                        return file.read().strip()
+                except Exception as e:
+                    logger.warning(f"Failed to read file as text: {str(e)}")
                     return None
 
         except Exception as e:
-            print(f"Error extracting text: {str(e)}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"Error extracting text from document: {str(e)}\n{error_traceback}")
             return None
 
 
