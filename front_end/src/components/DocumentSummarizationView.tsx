@@ -250,22 +250,6 @@ export function DocumentSummarizationView() {
                         )}
                         {copied ? 'Copied' : 'Copy'}
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const blob = new Blob([summary.full_summary], { type: 'text/plain' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `${document?.title || 'summary'}.txt`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Export
-                      </Button>
                     </div>
                   </div>
 
