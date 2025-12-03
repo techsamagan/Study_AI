@@ -1,24 +1,22 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { FileText, Loader2, X, Download } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
-import { Button } from './ui/button';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import { apiClient, type Document } from '../services/api';
-import mammoth from 'mammoth';
+import { apiClient, type Document, type Summary } from '../services/api';
 
 export function AllDocumentsView() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
-  const [docxHtml, setDocxHtml] = useState<string>('');
-  const [convertingDocx, setConvertingDocx] = useState(false);
+  const [selectedSummary, setSelectedSummary] = useState<Summary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   useEffect(() => {
     loadDocuments();
@@ -45,51 +43,21 @@ export function AllDocumentsView() {
 
   const handleDocumentClick = async (doc: Document) => {
     setSelectedDocument(doc);
-    setDocxHtml('');
+    setSelectedSummary(null);
+    setLoadingSummary(true);
+    setError('');
     
-    // If it's a DOCX file, convert it to HTML
-    const ext = getFileExtension(doc.file);
-    if (ext === 'docx' || ext === 'doc') {
-      await convertDocxToHtml(doc);
-    }
-  };
-
-  const convertDocxToHtml = async (doc: Document) => {
     try {
-      setConvertingDocx(true);
-      setError('');
-      
-      // Fetch the DOCX file as arraybuffer
-      const response = await fetch(doc.file);
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Convert to HTML using mammoth
-      const result = await mammoth.convertToHtml({ arrayBuffer });
-      setDocxHtml(result.value);
-      
-      // Log any messages/warnings from mammoth
-      if (result.messages.length > 0) {
-        console.log('Mammoth conversion messages:', result.messages);
-      }
+      // Fetch all summaries and find the one for this document
+      const summaries = await apiClient.getSummaries();
+      const summary = summaries.find(s => s.document.id === doc.id);
+      setSelectedSummary(summary || null);
     } catch (err: any) {
-      console.error('Error converting DOCX:', err);
-      setError('Failed to convert document for preview');
+      console.error('Failed to load summary:', err);
+      setError('Failed to load summary');
     } finally {
-      setConvertingDocx(false);
+      setLoadingSummary(false);
     }
-  };
-
-  const handleDownload = (doc: Document) => {
-    const link = document.createElement('a');
-    link.href = doc.file;
-    link.download = doc.title;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const getFileExtension = (filename: string) => {
-    return filename.split('.').pop()?.toLowerCase() || '';
   };
 
   if (loading) {
@@ -159,72 +127,43 @@ export function AllDocumentsView() {
 
       {/* Document Viewer Modal */}
       <Dialog open={!!selectedDocument} onOpenChange={() => setSelectedDocument(null)}>
-        <DialogContent className="max-w-5xl h-[90vh]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between pr-8">
-              <span className="truncate">{selectedDocument?.title}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => selectedDocument && handleDownload(selectedDocument)}
-                className="ml-2"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Download
-              </Button>
+        <DialogContent 
+          className="p-0 flex flex-col"
+          style={{
+            width: '95vw',
+            maxWidth: '1400px',
+            height: '92vh',
+          }}
+        >
+          <DialogHeader className="px-10 pt-8 pb-6 border-b border-gray-200">
+            <DialogTitle className="text-2xl font-semibold">
+              {selectedDocument?.title}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-auto">
-            {selectedDocument && (() => {
-              const ext = getFileExtension(selectedDocument.file);
-              
-              // Show loading state while converting DOCX
-              if (convertingDocx) {
-                return (
-                  <div className="flex flex-col items-center justify-center h-full">
-                    <Loader2 className="w-12 h-12 animate-spin text-purple-600 mb-4" />
-                    <p className="text-muted-foreground">Converting document...</p>
-                  </div>
-                );
-              }
-              
-              // Show PDF in iframe
-              if (ext === 'pdf') {
-                return (
-                  <iframe
-                    src={selectedDocument.file}
-                    className="w-full h-full border rounded"
-                    title={selectedDocument.title}
-                  />
-                );
-              }
-              
-              // Show converted DOCX as HTML
-              if ((ext === 'docx' || ext === 'doc') && docxHtml) {
-                return (
-                  <div 
-                    className="p-8 prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: docxHtml }}
-                  />
-                );
-              }
-              
-              // Fallback: preview not available
-              return (
-                <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                  <FileText className="w-16 h-16 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Preview not available</h3>
-                  <p className="text-muted-foreground mb-4">
-                    This file type cannot be previewed in the browser.
-                  </p>
-                  <Button onClick={() => selectedDocument && handleDownload(selectedDocument)}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Download to view
-                  </Button>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
+            {loadingSummary ? (
+              <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <Loader2 className="w-12 h-12 animate-spin text-purple-600 mb-4" />
+                <p className="text-muted-foreground">Loading summary...</p>
+              </div>
+            ) : selectedSummary ? (
+              <div className="max-w-5xl mx-auto px-12 py-10">
+                <p className="text-gray-800 leading-[1.8] text-lg whitespace-pre-wrap">
+                  {selectedSummary.full_summary}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center mb-4">
+                  <FileText className="w-8 h-8 text-gray-400" />
                 </div>
-              );
-            })()}
+                <h3 className="text-lg font-semibold mb-2 text-gray-900">No summary available</h3>
+                <p className="text-muted-foreground max-w-sm">
+                  This document hasn't been summarized yet. Generate a summary to see AI-powered insights.
+                </p>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

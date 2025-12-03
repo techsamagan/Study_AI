@@ -31,7 +31,7 @@ export interface Document {
 
 export interface Summary {
   id: number;
-  document: number;
+  document: Document;
   full_summary: string;
   key_points: string[];
   created_at: string;
