@@ -238,21 +238,6 @@ export function DashboardView() {
           </div>
         </div>
       </div>
-
-      <Card className="p-6 gradient-blue-purple text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-white">Study Session Reminder</h3>
-            <p className="text-white/90 mt-1">
-              You have 15 flashcards due for review today
-            </p>
-          </div>
-          <Button variant="secondary" className="bg-white text-purple-700 hover:bg-white/90">
-            <Calendar className="w-4 h-4 mr-2" />
-            Start Review
-          </Button>
-        </div>
-      </Card>
     </div>
   );
 }
