@@ -186,6 +186,12 @@ class ApiClient {
     });
   }
 
+  async deleteAllDocuments(): Promise<{ message: string; deleted_count: number }> {
+    return this.request('/documents/delete_all/', {
+      method: 'DELETE',
+    });
+  }
+
   async generateSummary(documentId: number): Promise<Summary> {
     return this.request<Summary>(`/documents/${documentId}/generate_summary/`, {
       method: 'POST',
@@ -255,6 +261,12 @@ class ApiClient {
 
   async deleteFlashcard(id: number): Promise<void> {
     await this.request(`/flashcards/${id}/`, {
+      method: 'DELETE',
+    });
+  }
+
+  async deleteAllFlashcards(): Promise<{ message: string; deleted_count: number }> {
+    return this.request('/flashcards/delete_all/', {
       method: 'DELETE',
     });
   }

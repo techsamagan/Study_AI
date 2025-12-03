@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { FileText, Brain, Clock, TrendingUp, Plus, MoreVertical, Calendar } from 'lucide-react';
+import { FileText, Brain, Clock, TrendingUp, Plus, MoreVertical, Calendar, Trash2, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -13,6 +13,7 @@ export function DashboardView() {
   const [recentDocuments, setRecentDocuments] = useState<Document[]>([]);
   const [recentSummaries, setRecentSummaries] = useState<Summary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingAllDocs, setDeletingAllDocs] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -42,6 +43,28 @@ export function DashboardView() {
       return formatDistanceToNow(new Date(dateString), { addSuffix: true });
     } catch {
       return dateString;
+    }
+  };
+
+  const handleDeleteAllDocuments = async () => {
+    if (!stats?.documents_count || stats.documents_count === 0) return;
+
+    if (!confirm(`Are you sure you want to delete ALL ${stats.documents_count} documents? This action cannot be undone and will also delete all associated summaries and flashcards!`)) {
+      return;
+    }
+
+    try {
+      setDeletingAllDocs(true);
+      const result = await apiClient.deleteAllDocuments();
+      
+      // Refresh dashboard data
+      await loadDashboardData();
+      alert(result.message);
+    } catch (error: any) {
+      console.error('Failed to delete all documents:', error);
+      alert(error.message || 'Failed to delete documents');
+    } finally {
+      setDeletingAllDocs(false);
     }
   };
 
@@ -109,7 +132,29 @@ export function DashboardView() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h3>Recent Documents</h3>
-            <Button variant="ghost" size="sm">View all</Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm">View all</Button>
+              {stats && stats.documents_count > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteAllDocuments}
+                  disabled={deletingAllDocs}
+                >
+                  {deletingAllDocs ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete All
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
           <div className="space-y-3">
             {recentDocuments.length === 0 ? (

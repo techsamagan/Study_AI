@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Plus, Sparkles, FileText, Trash2, Edit2, Save, Loader2 } from 'lucide-react';
+import { Plus, Sparkles, FileText, Trash2, Edit2, Save, Loader2, AlertTriangle } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -24,6 +24,7 @@ export function FlashcardCreationView() {
   const [selectedDocument, setSelectedDocument] = useState<number | null>(null);
   const [generating, setGenerating] = useState(false);
   const [numCards, setNumCards] = useState(10);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const categories = ['General', 'Fundamentals', 'Concepts', 'Algorithms', 'Practice'];
 
@@ -133,6 +134,24 @@ export function FlashcardCreationView() {
       setError(err.message || 'Failed to generate flashcards');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!confirm(`Are you sure you want to delete ALL ${flashcards.length} flashcards? This action cannot be undone!`)) {
+      return;
+    }
+
+    try {
+      setDeletingAll(true);
+      setError('');
+      const result = await apiClient.deleteAllFlashcards();
+      setFlashcards([]);
+      alert(result.message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete flashcards');
+    } finally {
+      setDeletingAll(false);
     }
   };
 
@@ -255,19 +274,42 @@ export function FlashcardCreationView() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3>Your Flashcards ({filteredFlashcards.length})</h3>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Filter by category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {flashcards.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteAll}
+                  disabled={deletingAll}
+                >
+                  {deletingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete All
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-3">
