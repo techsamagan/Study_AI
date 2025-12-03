@@ -56,7 +56,7 @@ export function DashboardView() {
     try {
       setDeletingAllDocs(true);
       const result = await apiClient.deleteAllDocuments();
-      
+
       // Refresh dashboard data
       await loadDashboardData();
       alert(result.message);
@@ -163,33 +163,33 @@ export function DashboardView() {
               </Card>
             ) : (
               recentDocuments.map((doc, index) => (
-              <motion.div
-                key={doc.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card className="p-4 hover:shadow-md transition-all cursor-pointer group">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center flex-shrink-0">
-                        <FileText className="w-5 h-5 text-purple-600" />
-                      </div>
-                      <div className="flex-1 min-w-0 overflow-hidden">
-                        <h4 className="truncate">{doc.title}</h4>
-                        <div className="flex items-center gap-3 mt-1 text-muted-foreground">
-                          {doc.pages && <span>{doc.pages} pages</span>}
-                          {doc.pages && <span>•</span>}
-                          <span>{formatDate(doc.uploaded_at)}</span>
+                <motion.div
+                  key={doc.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Card className="p-4 hover:shadow-md transition-all cursor-pointer group">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-5 h-5 text-purple-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="truncate">{doc.title}</h4>
+                          <div className="flex items-center gap-3 mt-1 text-muted-foreground">
+                            {doc.pages && <span>{doc.pages} pages</span>}
+                            {doc.pages && <span>•</span>}
+                            <span>{formatDate(doc.uploaded_at)}</span>
+                          </div>
                         </div>
                       </div>
+                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </Card>
-              </motion.div>
+                  </Card>
+                </motion.div>
               ))
             )}
           </div>
@@ -207,37 +207,52 @@ export function DashboardView() {
               </Card>
             ) : (
               recentSummaries.map((summary, index) => (
-              <motion.div
-                key={summary.id}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <Card className="p-4 hover:shadow-md transition-all cursor-pointer group">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h4 className="truncate">{summary.full_summary.substring(0, 50)}...</h4>
-                      <p className="text-muted-foreground mt-1">
-                        {formatDate(summary.created_at)}
-                      </p>
-                      <div className="flex items-center gap-2 mt-3">
-                        <Badge variant="secondary" className="bg-purple-50 text-purple-700 hover:bg-purple-100">
-                          <Brain className="w-3 h-3 mr-1" />
-                          {summary.key_points.length} key points
-                        </Badge>
+                <motion.div
+                  key={summary.id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Card className="p-4 hover:shadow-md transition-all cursor-pointer group">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="truncate">{summary.full_summary.substring(0, 50)}...</h4>
+                        <p className="text-muted-foreground mt-1">
+                          {formatDate(summary.created_at)}
+                        </p>
+                        <div className="flex items-center gap-2 mt-3">
+                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 hover:bg-purple-100">
+                            <Brain className="w-3 h-3 mr-1" />
+                            {summary.key_points.length} key points
+                          </Badge>
+                        </div>
                       </div>
+                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </Card>
-              </motion.div>
+                  </Card>
+                </motion.div>
               ))
             )}
           </div>
         </div>
       </div>
+
+      <Card className="p-6 gradient-blue-purple text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-white">Study Session Reminder</h3>
+            <p className="text-white/90 mt-1">
+              You have 15 flashcards due for review today
+            </p>
+          </div>
+          <Button variant="secondary" className="bg-white text-purple-700 hover:bg-white/90">
+            <Calendar className="w-4 h-4 mr-2" />
+            Start Review
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }
