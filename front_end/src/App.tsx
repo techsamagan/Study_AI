@@ -7,6 +7,7 @@ import { FlashcardCreationView } from './components/FlashcardCreationView';
 import { StudyModeView } from './components/StudyModeView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
+import { AllDocumentsView } from './components/AllDocumentsView';
 import './index.css';
 
 interface DashboardProps {
@@ -25,7 +26,7 @@ export default function App({ onLogout }: DashboardProps) {
   const renderView = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardView />;
+        return <DashboardView onNavigate={setCurrentPage} />;
       case 'summarize':
         return <DocumentSummarizationView />;
       case 'flashcards':
@@ -36,8 +37,10 @@ export default function App({ onLogout }: DashboardProps) {
         return <SettingsView onLogout={onLogout} />;
       case 'admin':
         return <AdminView />;
+      case 'all-documents':
+        return <AllDocumentsView />;
       default:
-        return <DashboardView />;
+        return <DashboardView onNavigate={setCurrentPage} />;
     }
   };
 

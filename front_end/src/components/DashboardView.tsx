@@ -8,7 +8,11 @@ import { Progress } from './ui/progress';
 import { apiClient, type Document, type Summary, type DashboardStats } from '../services/api';
 import { formatDistanceToNow } from 'date-fns';
 
-export function DashboardView() {
+interface DashboardViewProps {
+  onNavigate?: (page: string) => void;
+}
+
+export function DashboardView({ onNavigate }: DashboardViewProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentDocuments, setRecentDocuments] = useState<Document[]>([]);
   const [recentSummaries, setRecentSummaries] = useState<Summary[]>([]);
@@ -133,7 +137,9 @@ export function DashboardView() {
           <div className="flex items-center justify-between mb-4">
             <h3>Recent Documents</h3>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm">View all</Button>
+              <Button variant="ghost" size="sm" onClick={() => onNavigate?.('all-documents')}>
+                View all
+              </Button>
               {stats && stats.documents_count > 0 && (
                 <Button
                   variant="destructive"
