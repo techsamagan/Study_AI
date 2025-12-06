@@ -196,49 +196,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
             )}
           </div>
         </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3>Recent Summaries</h3>
-            <Button variant="ghost" size="sm">View all</Button>
-          </div>
-          <div className="space-y-3">
-            {recentSummaries.length === 0 ? (
-              <Card className="p-8 text-center text-muted-foreground">
-                <p>No summaries yet. Generate summaries from your documents!</p>
-              </Card>
-            ) : (
-              recentSummaries.map((summary, index) => (
-                <motion.div
-                  key={summary.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <Card className="p-4 hover:shadow-md transition-all cursor-pointer group">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="truncate">{summary.full_summary.substring(0, 50)}...</h4>
-                        <p className="text-muted-foreground mt-1">
-                          {formatDate(summary.created_at)}
-                        </p>
-                        <div className="flex items-center gap-2 mt-3">
-                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 hover:bg-purple-100">
-                            <Brain className="w-3 h-3 mr-1" />
-                            {summary.key_points.length} key points
-                          </Badge>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );
