@@ -178,7 +178,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps) {
                           <FileText className="w-5 h-5 text-purple-600" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="truncate">{doc.title}</h4>
+                        <h4 className="line-clamp-1 break-all">{doc.title}</h4>
                           <div className="flex items-center gap-3 mt-1 text-muted-foreground">
                             {doc.pages && <span>{doc.pages} pages</span>}
                             {doc.pages && <span>•</span>}
