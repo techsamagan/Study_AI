@@ -217,45 +217,6 @@ python manage.py test
 cd front_end
 npm test
 ```
-
-## 📦 Deployment
-
-### Backend
-1. Set `DEBUG=False` in production
-2. Configure proper `ALLOWED_HOSTS`
-3. Set up production database
-4. Configure static files serving
-5. Use environment variables for secrets
-
-### Frontend
-```bash
-cd front_end
-npm run build
-# Deploy dist/ folder to your hosting service
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🙏 Acknowledgments
-
-- OpenAI for AI capabilities
-- Django and React communities
-- All contributors and users
-
-## 📞 Support
-
-For issues and questions, please open an issue on GitHub.
-
 ---
 
 **Note**: Make sure to never commit sensitive information like API keys, secrets, or `.env` files to the repository.
