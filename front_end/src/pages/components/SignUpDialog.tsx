@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { Sparkles } from 'lucide-react';
 import { apiClient, setAuthTokens, setStoredUser } from '../../services/api';
 
@@ -72,12 +72,9 @@ export const SignUpDialog: React.FC<SignUpDialogProps> = ({ open, onOpenChange, 
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      // Generate username from email
-      const username = formData.email.split('@')[0];
-
-      const response = await apiClient.register({
+      // The server generates a unique username from the email
+      await apiClient.register({
         email: formData.email,
-        username: username,
         first_name: firstName,
         last_name: lastName,
         password: formData.password,

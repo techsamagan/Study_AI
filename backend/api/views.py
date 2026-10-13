@@ -1,25 +1,15 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.views import TokenObtainPairView
-from django.contrib.auth import get_user_model
-from django.db.models import Avg
+import logging
+
+from django.db.models import Avg, Sum
 from django.utils import timezone
-from django.conf import settings
-import PyPDF2
-import docx
-import os
-import traceback
-import logging
+from rest_framework import mixins, serializers, status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-logger = logging.getLogger(__name__)
-import traceback
-import logging
-
-logger = logging.getLogger(__name__)
-
-from .models import Document, Summary, Flashcard
+from .extraction import MIME_TYPES, extract_text, get_extension
+from .models import Document, Summary, Flashcard, StudySession
 from .serializers import (
     UserRegistrationSerializer,
     UserSerializer,
@@ -28,27 +18,25 @@ from .serializers import (
     SummarySerializer,
     FlashcardSerializer,
     FlashcardCreateSerializer,
+    FlashcardReviewSerializer,
+    StudySessionSerializer,
 )
-from .services import OpenAIService
+from .services import AIServiceError, AIServiceNotConfigured, OpenAIService
+from .throttles import AIRateThrottle, AuthRateThrottle
 
-User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """Custom token view that returns user data"""
+    """Login view that returns the user alongside the token pair"""
 
     serializer_class = CustomTokenObtainPairSerializer
-
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        if response.status_code == 200:
-            user = User.objects.get(email=request.data["email"])
-            response.data["user"] = UserSerializer(user).data
-        return response
+    throttle_classes = [AuthRateThrottle]
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def register(request):
     """User registration endpoint"""
     serializer = UserRegistrationSerializer(data=request.data)
@@ -71,12 +59,47 @@ def user_profile(request):
     if request.method == "GET":
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
-    elif request.method in ["PUT", "PATCH"]:
-        serializer = UserSerializer(request.user, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    serializer = UserSerializer(request.user, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _parse_num_cards(value):
+    try:
+        num_cards = int(value)
+    except (ValueError, TypeError):
+        return 10
+    return num_cards if 1 <= num_cards <= 50 else 10
+
+
+def _ai_error_response(exc, what):
+    """Turn an AI failure into a response without leaking internal details."""
+    if isinstance(exc, AIServiceNotConfigured):
+        return Response(
+            {"error": "The AI service is not configured on the server."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response(
+        {"error": f"The AI service could not generate {what}. Please try again."},
+        status=status.HTTP_502_BAD_GATEWAY,
+    )
+
+
+def _create_flashcards(cards_data, **owner_fields):
+    return Flashcard.objects.bulk_create(
+        [
+            Flashcard(
+                question=card["question"],
+                answer=card["answer"],
+                category=card["category"],
+                **owner_fields,
+            )
+            for card in cards_data
+        ]
+    )
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
@@ -86,209 +109,106 @@ class DocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # Scoping by user is what enforces ownership for every action below.
         return Document.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        file = self.request.FILES.get("file")
-        if not file:
-            raise ValueError("No file provided")
+        file = serializer.validated_data["file"]
+        extension = get_extension(file.name)
 
-        # Determine file type
-        file_type = file.content_type or "application/octet-stream"
-
-        # Try to extract text and count pages
-        pages = None
         try:
-            if file_type == "application/pdf":
-                pdf_reader = PyPDF2.PdfReader(file)
-                pages = len(pdf_reader.pages)
-            elif file_type in [
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
-            ]:
-                doc = docx.Document(file)
-                # Estimate pages (rough calculation)
-                pages = max(1, len(doc.paragraphs) // 20)
-        except Exception:
-            pass  # If extraction fails, pages remains None
+            text, pages = extract_text(file, extension)
+        except ValueError as exc:
+            raise serializers.ValidationError({"file": [str(exc)]})
 
         serializer.save(
             user=self.request.user,
             file_size=file.size,
-            file_type=file_type,
+            file_type=MIME_TYPES[extension],
             pages=pages,
+            extracted_text=text,
         )
 
-    @action(detail=True, methods=["post"])
+    def _get_document_text(self, document):
+        """Return the document text, extracting it once for older documents."""
+        if document.extracted_text:
+            return document.extracted_text
+
+        extension = get_extension(document.file.name)
+        try:
+            with document.file.open("rb") as file:
+                text, _ = extract_text(file, extension)
+        except (ValueError, OSError) as exc:
+            logger.warning("Could not read file for document %s: %s", document.pk, exc)
+            return ""
+
+        if text:
+            document.extracted_text = text
+            document.save(update_fields=["extracted_text"])
+        return text
+
+    @action(detail=True, methods=["post"], throttle_classes=[AIRateThrottle])
     def generate_summary(self, request, pk=None):
-        """Generate summary for a document"""
+        """Generate (or regenerate) the summary for a document"""
         document = self.get_object()
 
-        if document.user != request.user:
+        text_content = self._get_document_text(document)
+        if not text_content:
             return Response(
-                {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
+                {"error": "Could not extract text from document"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
-            # Extract text from document
-            text_content = self._extract_text_from_document(document)
+            summary_data = OpenAIService().generate_summary(text_content)
+        except AIServiceError as exc:
+            return _ai_error_response(exc, "a summary")
 
-            if not text_content:
-                return Response(
-                    {"error": "Could not extract text from document"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        # Regenerating updates the existing summary in place, so flashcards
+        # that were created from it stay linked.
+        summary = document.summaries.first()
+        created = summary is None
+        if created:
+            summary = Summary(user=request.user, document=document)
+        summary.full_summary = summary_data["full_summary"]
+        summary.key_points = summary_data["key_points"]
+        summary.save()
 
-            # Generate summary using OpenAI
-            openai_service = OpenAIService()
+        return Response(
+            SummarySerializer(summary, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
-            summary_data = openai_service.generate_summary(text_content)
-
-            # Validate summary_data structure
-            if not isinstance(summary_data, dict):
-                raise ValueError(
-                    f"Expected dict from OpenAI service, got {type(summary_data)}"
-                )
-
-            if "full_summary" not in summary_data:
-                raise ValueError(
-                    f"Missing 'full_summary' key in OpenAI response. Got keys: {list(summary_data.keys())}"
-                )
-
-            # Create summary object
-            summary = Summary.objects.create(
-                user=request.user,
-                document=document,
-                full_summary=summary_data.get("full_summary", ""),
-                key_points=summary_data.get("key_points", []),
-            )
-
-            serializer = SummarySerializer(summary)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            error_traceback = traceback.format_exc()
-            logger.error(
-                f"Error generating summary for document {pk}: {str(e)}\n{error_traceback}"
-            )
-            return Response(
-                {
-                    "error": str(e),
-                    "detail": (
-                        error_traceback
-                        if settings.DEBUG
-                        else "An error occurred while generating the summary"
-                    ),
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], throttle_classes=[AIRateThrottle])
     def generate_flashcards(self, request, pk=None):
         """Generate flashcards from a document"""
         document = self.get_object()
+        num_cards = _parse_num_cards(request.data.get("num_cards", 10))
 
-        if document.user != request.user:
+        text_content = self._get_document_text(document)
+        if not text_content:
             return Response(
-                {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
+                {"error": "Could not extract text from document"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-        num_cards = request.data.get("num_cards", 10)
-        try:
-            num_cards = int(num_cards)
-            if num_cards < 1 or num_cards > 50:
-                num_cards = 10
-        except (ValueError, TypeError):
-            num_cards = 10
 
         try:
-            # Extract text from document
-            text_content = self._extract_text_from_document(document)
+            flashcards_data = OpenAIService().generate_flashcards(text_content, num_cards)
+        except AIServiceError as exc:
+            return _ai_error_response(exc, "flashcards")
 
-            if not text_content:
-                return Response(
-                    {"error": "Could not extract text from document"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Generate flashcards using OpenAI
-            openai_service = OpenAIService()
-            flashcards_data = openai_service.generate_flashcards(
-                text_content, num_cards
-            )
-
-            # Create flashcard objects
-            created_flashcards = []
-            for card_data in flashcards_data:
-                flashcard = Flashcard.objects.create(
-                    user=request.user,
-                    document=document,
-                    question=card_data["question"],
-                    answer=card_data["answer"],
-                    category=card_data.get("category", "General"),
-                )
-                created_flashcards.append(flashcard)
-
-            serializer = FlashcardSerializer(created_flashcards, many=True)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    def _extract_text_from_document(self, document):
-        """Extract text content from document file"""
-        try:
-            file_path = document.file.path
-            file_type = document.file_type
-
-            if not os.path.exists(file_path):
-                logger.error(f"Document file not found: {file_path}")
-                return None
-
-            if file_type == "application/pdf":
-                with open(file_path, "rb") as file:
-                    pdf_reader = PyPDF2.PdfReader(file)
-                    text = ""
-                    for page in pdf_reader.pages:
-                        text += page.extract_text() + "\n"
-                    return text.strip()
-
-            elif file_type in [
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "application/msword",
-            ]:
-                doc = docx.Document(file_path)
-                text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-                return text.strip()
-
-            elif file_type == "text/plain":
-                with open(file_path, "r", encoding="utf-8") as file:
-                    return file.read().strip()
-
-            else:
-                # Try to read as text anyway
-                try:
-                    with open(file_path, "r", encoding="utf-8") as file:
-                        return file.read().strip()
-                except Exception as e:
-                    logger.warning(f"Failed to read file as text: {str(e)}")
-                    return None
-
-        except Exception as e:
-            error_traceback = traceback.format_exc()
-            logger.error(
-                f"Error extracting text from document: {str(e)}\n{error_traceback}"
-            )
-            return None
+        flashcards = _create_flashcards(flashcards_data, user=request.user, document=document)
+        serializer = FlashcardSerializer(
+            flashcards, many=True, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["delete"])
     def delete_all(self, request):
         """Delete all documents for current user"""
-        user = request.user
-        count = Document.objects.filter(user=user).count()
-        Document.objects.filter(user=user).delete()
+        documents = Document.objects.filter(user=request.user)
+        count = documents.count()
+        documents.delete()
 
         return Response(
             {
@@ -299,63 +219,48 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
 
 
-class SummaryViewSet(viewsets.ModelViewSet):
-    """ViewSet for summary management"""
+class SummaryViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """ViewSet for reading and deleting summaries (they are created by generate_summary)"""
 
     serializer_class = SummarySerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Summary.objects.filter(user=self.request.user)
+        queryset = Summary.objects.filter(user=self.request.user).select_related("document")
 
-    @action(detail=True, methods=["post"])
+        # Filter by document if provided
+        document_id = self.request.query_params.get("document")
+        if document_id and document_id.isdigit():
+            queryset = queryset.filter(document_id=document_id)
+
+        return queryset
+
+    @action(detail=True, methods=["post"], throttle_classes=[AIRateThrottle])
     def generate_flashcards(self, request, pk=None):
         """Generate flashcards from a summary"""
         summary = self.get_object()
-
-        if summary.user != request.user:
-            return Response(
-                {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
-            )
-
-        num_cards = request.data.get("num_cards", 10)
-        try:
-            num_cards = int(num_cards)
-            if num_cards < 1 or num_cards > 50:
-                num_cards = 10
-        except (ValueError, TypeError):
-            num_cards = 10
+        num_cards = _parse_num_cards(request.data.get("num_cards", 10))
 
         try:
-            # Use summary content to generate flashcards
-            text_content = summary.full_summary
+            flashcards_data = OpenAIService().generate_flashcards(summary.full_summary, num_cards)
+        except AIServiceError as exc:
+            return _ai_error_response(exc, "flashcards")
 
-            # Generate flashcards using OpenAI
-            openai_service = OpenAIService()
-            flashcards_data = openai_service.generate_flashcards(
-                text_content, num_cards
-            )
-
-            # Create flashcard objects
-            created_flashcards = []
-            for card_data in flashcards_data:
-                flashcard = Flashcard.objects.create(
-                    user=request.user,
-                    document=summary.document,
-                    summary=summary,
-                    question=card_data["question"],
-                    answer=card_data["answer"],
-                    category=card_data.get("category", "General"),
-                )
-                created_flashcards.append(flashcard)
-
-            serializer = FlashcardSerializer(created_flashcards, many=True)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            return Response(
-                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        flashcards = _create_flashcards(
+            flashcards_data,
+            user=request.user,
+            document=summary.document,
+            summary=summary,
+        )
+        serializer = FlashcardSerializer(
+            flashcards, many=True, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class FlashcardViewSet(viewsets.ModelViewSet):
@@ -365,7 +270,7 @@ class FlashcardViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Flashcard.objects.filter(user=self.request.user)
+        queryset = Flashcard.objects.filter(user=self.request.user).select_related("document")
 
         # Filter by category if provided
         category = self.request.query_params.get("category", None)
@@ -374,53 +279,49 @@ class FlashcardViewSet(viewsets.ModelViewSet):
 
         # Filter by document if provided
         document_id = self.request.query_params.get("document", None)
-        if document_id:
+        if document_id and document_id.isdigit():
             queryset = queryset.filter(document_id=document_id)
 
         return queryset
 
-    def get_serializer_class(self):
-        if self.action == "create":
-            return FlashcardCreateSerializer
-        return FlashcardSerializer
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        serializer = FlashcardCreateSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
+        serializer.is_valid(raise_exception=True)
+        flashcard = serializer.save(user=request.user)
+        # Respond with the full card (including its id) so clients can edit it right away.
+        return Response(
+            FlashcardSerializer(flashcard, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["post"])
     def review(self, request, pk=None):
-        """Mark flashcard as reviewed"""
+        """Record a study review and step the card's mastery level up or down"""
         flashcard = self.get_object()
 
-        if flashcard.user != request.user:
-            return Response(
-                {"error": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
-            )
+        serializer = FlashcardReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        mastery_level = request.data.get("mastery_level", flashcard.mastery_level)
-        try:
-            mastery_level = int(mastery_level)
-            if mastery_level < 0:
-                mastery_level = 0
-            elif mastery_level > 100:
-                mastery_level = 100
-        except (ValueError, TypeError):
-            mastery_level = flashcard.mastery_level
+        if serializer.validated_data["result"] == "mastered":
+            mastery_level = flashcard.mastery_level + Flashcard.MASTERY_GAIN
+        else:
+            mastery_level = flashcard.mastery_level - Flashcard.MASTERY_LOSS
 
+        flashcard.mastery_level = max(0, min(100, mastery_level))
         flashcard.last_reviewed = timezone.now()
         flashcard.review_count += 1
-        flashcard.mastery_level = mastery_level
-        flashcard.save()
+        flashcard.save(update_fields=["mastery_level", "last_reviewed", "review_count", "updated_at"])
 
-        serializer = self.get_serializer(flashcard)
-        return Response(serializer.data)
+        return Response(self.get_serializer(flashcard).data)
 
     @action(detail=False, methods=["delete"])
     def delete_all(self, request):
         """Delete all flashcards for current user"""
-        user = request.user
-        count = Flashcard.objects.filter(user=user).count()
-        Flashcard.objects.filter(user=user).delete()
+        flashcards = Flashcard.objects.filter(user=request.user)
+        count = flashcards.count()
+        flashcards.delete()
 
         return Response(
             {
@@ -431,24 +332,53 @@ class FlashcardViewSet(viewsets.ModelViewSet):
         )
 
 
+class StudySessionViewSet(
+    mixins.CreateModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """ViewSet for recording completed study sessions"""
+
+    serializer_class = StudySessionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return StudySession.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+def _format_study_time(total_seconds):
+    hours, remainder = divmod(int(total_seconds), 3600)
+    minutes = remainder // 60
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
     """Get dashboard statistics"""
     user = request.user
 
-    mastery_result = Flashcard.objects.filter(user=user).aggregate(
-        avg_mastery=Avg("mastery_level")
+    mastery_value = (
+        Flashcard.objects.filter(user=user).aggregate(avg_mastery=Avg("mastery_level"))["avg_mastery"]
+        or 0
     )
-    # The key is 'avg_mastery' when using aggregate(avg_mastery=Avg(...))
-    mastery_value = mastery_result.get("avg_mastery") or 0
+    study_seconds = (
+        StudySession.objects.filter(user=user).aggregate(total=Sum("duration_seconds"))["total"]
+        or 0
+    )
 
     stats = {
         "documents_count": Document.objects.filter(user=user).count(),
         "flashcards_count": Flashcard.objects.filter(user=user).count(),
         "summaries_count": Summary.objects.filter(user=user).count(),
-        "study_time": "0h",  # Can be implemented with study session tracking
-        "mastery": int(mastery_value) if mastery_value else 0,
+        "study_seconds": study_seconds,
+        "study_time": _format_study_time(study_seconds),
+        "mastery": int(mastery_value),
     }
 
     return Response(stats)

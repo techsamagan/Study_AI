@@ -47,8 +47,8 @@ export function DocumentSummarizationView() {
     if (!file) return;
 
     // Validate file type
-    const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/plain'];
-    if (!validTypes.includes(file.type) && !file.name.endsWith('.pdf') && !file.name.endsWith('.docx') && !file.name.endsWith('.doc') && !file.name.endsWith('.txt')) {
+    const fileName = file.name.toLowerCase();
+    if (!['.pdf', '.docx', '.txt'].some((extension) => fileName.endsWith(extension))) {
       setError('Invalid file type. Please upload PDF, DOCX, or TXT files.');
       return;
     }
@@ -63,21 +63,28 @@ export function DocumentSummarizationView() {
     setIsUploading(true);
     setSummary(null);
 
+    let uploadedDoc: Document;
     try {
       const title = file.name.replace(/\.[^/.]+$/, '');
-      const uploadedDoc = await apiClient.uploadDocument(file, title);
+      uploadedDoc = await apiClient.uploadDocument(file, title);
       setDocument(uploadedDoc);
-      
-      // Automatically generate summary
-      setIsProcessing(true);
-      const generatedSummary = await apiClient.generateSummary(uploadedDoc.id);
-      setSummary(generatedSummary);
-      setIsProcessing(false);
     } catch (err: any) {
       setError(err.message || 'Failed to upload document. Please try again.');
-      setIsProcessing(false);
+      return;
     } finally {
       setIsUploading(false);
+    }
+
+    // Automatically generate summary. If this fails the document stays
+    // uploaded and the "Generate Summary" button lets the user retry.
+    setIsProcessing(true);
+    try {
+      const generatedSummary = await apiClient.generateSummary(uploadedDoc.id);
+      setSummary(generatedSummary);
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate summary. Please try again.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -135,7 +142,7 @@ export function DocumentSummarizationView() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.doc,.txt"
+              accept=".pdf,.docx,.txt"
               onChange={handleFileSelect}
               className="hidden"
             />

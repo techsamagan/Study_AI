@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Users, FileText, Brain, TrendingUp, UserCircle, Search } from 'lucide-react';
 import { Card } from './ui/card';
+import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { apiClient, type User } from '../services/api';
@@ -52,18 +53,8 @@ export function AdminView() {
         params.search = searchTerm;
       }
       const response = await apiClient.getAdminUsers(params);
-      // Handle paginated response
-      if (Array.isArray(response)) {
-        setUsers(response);
-        setTotalPages(1);
-      } else {
-        setUsers(response.results || []);
-        if (response.count !== undefined) {
-          setTotalPages(Math.ceil(response.count / 20));
-        } else {
-          setTotalPages(1);
-        }
-      }
+      setUsers(response.results || []);
+      setTotalPages(Math.max(1, Math.ceil(response.count / 20)));
     } catch (err: any) {
       setError(err.message || 'Failed to load users');
     } finally {

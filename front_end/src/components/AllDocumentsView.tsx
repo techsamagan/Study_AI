@@ -48,10 +48,8 @@ export function AllDocumentsView() {
     setError('');
     
     try {
-      // Fetch all summaries and find the one for this document
-      const summaries = await apiClient.getSummaries();
-      const summary = summaries.find(s => s.document.id === doc.id);
-      setSelectedSummary(summary || null);
+      const summaries = await apiClient.getSummaries({ document: doc.id });
+      setSelectedSummary(summaries[0] || null);
     } catch (err: any) {
       console.error('Failed to load summary:', err);
       setError('Failed to load summary');

@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, RotateCw, Check, X, Trophy, Target, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
-import { apiClient, type Flashcard as FlashcardType } from '../services/api';
+import { apiClient, type Flashcard as FlashcardType, type ReviewResult } from '../services/api';
 
 export function StudyModeView() {
+  // `deck` is every card the user owns; `flashcards` is what this session runs through
+  const [deck, setDeck] = useState<FlashcardType[]>([]);
   const [flashcards, setFlashcards] = useState<FlashcardType[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -16,28 +18,48 @@ export function StudyModeView() {
   const [isComplete, setIsComplete] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const sessionStartedAt = useRef(Date.now());
+  const sessionRecorded = useRef(false);
 
   useEffect(() => {
     loadFlashcards();
   }, []);
+
+  // Save the finished session so the dashboard can show total study time
+  useEffect(() => {
+    if (!isComplete || sessionRecorded.current) return;
+    const cardsReviewed = masteredCards.length + needsPracticeCards.length;
+    if (cardsReviewed === 0) return;
+
+    sessionRecorded.current = true;
+    const elapsedSeconds = Math.round((Date.now() - sessionStartedAt.current) / 1000);
+    apiClient.recordStudySession({
+      duration_seconds: Math.min(elapsedSeconds, 4 * 60 * 60),
+      cards_reviewed: cardsReviewed,
+      cards_mastered: masteredCards.length,
+    }).catch((err) => {
+      console.error('Failed to record study session:', err);
+    });
+  }, [isComplete]);
+
+  const startSession = (cards: FlashcardType[]) => {
+    setFlashcards(cards);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setMasteredCards([]);
+    setNeedsPracticeCards([]);
+    setIsComplete(false);
+    sessionStartedAt.current = Date.now();
+    sessionRecorded.current = false;
+  };
 
   const loadFlashcards = async () => {
     try {
       setLoading(true);
       setError('');
       const cards = await apiClient.getFlashcards();
-      if (!cards || cards.length === 0) {
-        setFlashcards([]);
-        setIsComplete(false);
-        setCurrentIndex(0);
-        return;
-      }
-      setFlashcards(cards);
-      setCurrentIndex(0);
-      setIsFlipped(false);
-      setMasteredCards([]);
-      setNeedsPracticeCards([]);
-      setIsComplete(false);
+      setDeck(cards);
+      startSession(cards);
     } catch (err: any) {
       setError(err.message || 'Failed to load flashcards for study mode');
     } finally {
@@ -65,16 +87,28 @@ export function StudyModeView() {
     }
   };
 
+  // The server steps the card's mastery level up or down and returns the new value
+  const recordReview = (card: FlashcardType, result: ReviewResult) => {
+    apiClient.reviewFlashcard(card.id, result)
+      .then((updated) => {
+        const merge = (cards: FlashcardType[]) => cards.map((c) => (c.id === updated.id ? updated : c));
+        setDeck(merge);
+        setFlashcards(merge);
+      })
+      .catch((err) => {
+        console.error('Failed to save review:', err);
+      });
+  };
+
   const handleMastered = () => {
     if (!currentCard) return;
 
     if (!masteredCards.includes(currentCard.id)) {
       setMasteredCards([...masteredCards, currentCard.id]);
     }
+    setNeedsPracticeCards(needsPracticeCards.filter((id) => id !== currentCard.id));
 
-    apiClient.reviewFlashcard(currentCard.id, 100).catch(() => {
-      // Ignore review errors for now
-    });
+    recordReview(currentCard, 'mastered');
 
     handleNext();
   };
@@ -85,20 +119,19 @@ export function StudyModeView() {
     if (!needsPracticeCards.includes(currentCard.id)) {
       setNeedsPracticeCards([...needsPracticeCards, currentCard.id]);
     }
+    setMasteredCards(masteredCards.filter((id) => id !== currentCard.id));
 
-    apiClient.reviewFlashcard(currentCard.id, Math.max(currentCard.mastery_level - 10, 0)).catch(() => {
-      // Ignore review errors for now
-    });
+    recordReview(currentCard, 'needs_practice');
 
     handleNext();
   };
 
   const handleRestart = () => {
-    setCurrentIndex(0);
-    setIsFlipped(false);
-    setMasteredCards([]);
-    setNeedsPracticeCards([]);
-    setIsComplete(false);
+    startSession(deck);
+  };
+
+  const handleReviewMistakes = () => {
+    startSession(deck.filter((card) => needsPracticeCards.includes(card.id)));
   };
 
   if (loading) {
@@ -112,6 +145,11 @@ export function StudyModeView() {
   if (!loading && (!flashcards || flashcards.length === 0)) {
     return (
       <div className="space-y-6">
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
+            {error}
+          </div>
+        )}
         <Card className="p-8 text-center">
           <h2 className="mb-3">No flashcards available yet</h2>
           <p className="text-muted-foreground mb-6">
@@ -183,7 +221,13 @@ export function StudyModeView() {
                 <RotateCw className="w-4 h-4 mr-2" />
                 Study Again
               </Button>
-              <Button variant="outline">Review Mistakes</Button>
+              <Button
+                variant="outline"
+                onClick={handleReviewMistakes}
+                disabled={needsPracticeCards.length === 0}
+              >
+                Review Mistakes
+              </Button>
             </div>
           </Card>
         </motion.div>

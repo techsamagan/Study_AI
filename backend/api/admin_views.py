@@ -10,7 +10,8 @@ from django.db.models import Count, Q, Avg
 from django.utils import timezone
 from datetime import timedelta
 from .models import Document, Summary, Flashcard
-from .serializers import UserSerializer
+from .pagination import StandardPagination
+from .serializers import AdminUserSerializer
 
 User = get_user_model()
 
@@ -57,14 +58,7 @@ def admin_dashboard_stats(request):
 @permission_classes([IsAdminUser])
 def admin_users_list(request):
     """Get list of all users with pagination"""
-    from rest_framework.pagination import PageNumberPagination
-    
-    class AdminUserPagination(PageNumberPagination):
-        page_size = 20
-        page_size_query_param = 'page_size'
-        max_page_size = 100
-    
-    paginator = AdminUserPagination()
+    paginator = StandardPagination()
     
     # Get filter parameters
     search = request.query_params.get('search', None)
@@ -83,10 +77,10 @@ def admin_users_list(request):
     page = paginator.paginate_queryset(queryset, request)
     
     if page is not None:
-        serializer = UserSerializer(page, many=True)
+        serializer = AdminUserSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
     
-    serializer = UserSerializer(queryset, many=True)
+    serializer = AdminUserSerializer(queryset, many=True)
     return Response(serializer.data)
 
 
@@ -103,11 +97,13 @@ def admin_user_detail(request, user_id):
         )
     
     if request.method == 'GET':
-        serializer = UserSerializer(user)
+        serializer = AdminUserSerializer(user)
         return Response(serializer.data)
     
     elif request.method == 'PATCH':
-        serializer = UserSerializer(user, data=request.data, partial=True)
+        serializer = AdminUserSerializer(
+            user, data=request.data, partial=True, context={'request': request}
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
