@@ -1,40 +1,33 @@
 #!/bin/bash
+# Starts PostgreSQL in Docker, applies migrations and runs the dev server.
+set -e
+cd "$(dirname "$0")"
+
 echo "🚀 Starting AI Learning Assistant Backend..."
-echo ""
 
-# Check if Docker is running
-if ! docker ps > /dev/null 2>&1; then
-    echo "❌ Docker is not running!"
-    echo "Please start Docker Desktop and try again."
+if [ ! -f .env ]; then
+    echo "❌ backend/.env not found. Create it with: cp .env.example .env"
     exit 1
 fi
 
-# Start Docker containers
-echo "📦 Starting PostgreSQL and Redis containers..."
-docker-compose up -d
-
-# Wait for containers to be ready
-echo "⏳ Waiting for containers to be ready..."
-sleep 5
-
-# Check if containers are running
-if docker-compose ps | grep -q "Up"; then
-    echo "✅ Containers are running!"
-else
-    echo "❌ Containers failed to start"
+if ! docker info > /dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker Desktop and try again."
     exit 1
 fi
 
-# Activate virtual environment
+echo "📦 Starting PostgreSQL..."
+docker compose up -d --wait
+
+if [ ! -d venv ]; then
+    echo "🐍 Creating virtual environment..."
+    python3.11 -m venv venv
+    ./venv/bin/pip install --quiet --upgrade pip
+    ./venv/bin/pip install --quiet -r requirements.txt
+fi
 source venv/bin/activate
 
-# Run migrations
 echo "🗄️  Running database migrations..."
 python manage.py migrate
 
-# Start server
-echo "🌐 Starting Django server..."
-echo "Server will be available at: http://localhost:8000"
-echo "API endpoints: http://localhost:8000/api/"
-echo ""
+echo "🌐 Starting Django server at http://localhost:8000 (API: http://localhost:8000/api/)"
 python manage.py runserver

@@ -101,6 +101,5 @@ coverage/
 *.temp
 .cache/
 
-# Docker
-.dockerignore
 
+.gstack/

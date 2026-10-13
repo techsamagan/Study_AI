@@ -7,6 +7,7 @@ interface SidebarProps {
   currentPage: string;
   onNavigate: (page: string) => void;
   onLogoClick?: () => void;
+  open?: boolean;
 }
 
 const menuItems = [
@@ -17,7 +18,7 @@ const menuItems = [
   { id: 'admin', label: 'Admin', icon: Shield, adminOnly: true },
 ];
 
-export function Sidebar({ currentPage, onNavigate, onLogoClick }: SidebarProps) {
+export function Sidebar({ currentPage, onNavigate, onLogoClick, open = false }: SidebarProps) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export function Sidebar({ currentPage, onNavigate, onLogoClick }: SidebarProps) 
   const isAdmin = user?.is_staff || user?.is_superuser;
 
   return (
-    <div className="h-screen w-64 bg-white border-r border-border flex flex-col fixed left-0 top-0">
+    <aside className={`app-sidebar ${open ? 'app-sidebar--open' : ''}`}>
       <div className="p-6 border-b border-border">
         <button
           onClick={onLogoClick}
@@ -116,6 +117,6 @@ export function Sidebar({ currentPage, onNavigate, onLogoClick }: SidebarProps) 
           </span>
         </motion.button>
       </div>
-    </div>
+    </aside>
   );
 }

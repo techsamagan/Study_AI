@@ -1,8 +1,18 @@
-import openai
-from openai import OpenAI
-from django.conf import settings
 import json
-import re
+import logging
+
+from django.conf import settings
+from openai import OpenAI, OpenAIError
+
+logger = logging.getLogger(__name__)
+
+
+class AIServiceError(Exception):
+    """The AI provider failed or returned something unusable."""
+
+
+class AIServiceNotConfigured(AIServiceError):
+    """OPENAI_API_KEY is missing."""
 
 
 class OpenAIService:
@@ -11,179 +21,134 @@ class OpenAIService:
     def __init__(self):
         self.api_key = settings.OPENAI_API_KEY
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY not set in environment variables")
-        self.client = OpenAI(api_key=self.api_key)
+            raise AIServiceNotConfigured("OPENAI_API_KEY not set in environment variables")
+        self.client = OpenAI(
+            api_key=self.api_key,
+            timeout=settings.OPENAI_TIMEOUT_SECONDS,
+            max_retries=1,
+        )
+
+    def _complete_json(self, system_prompt: str, user_prompt: str, max_tokens: int) -> dict:
+        """Run a chat completion in JSON mode and return the parsed object."""
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.7,
+                max_tokens=max_tokens,
+            )
+        except OpenAIError as exc:
+            logger.exception("OpenAI request failed")
+            raise AIServiceError("The AI service request failed") from exc
+
+        content = response.choices[0].message.content or ""
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError as exc:
+            logger.error("OpenAI returned invalid JSON: %.200s", content)
+            raise AIServiceError("The AI service returned an unreadable response") from exc
+        if not isinstance(result, dict):
+            raise AIServiceError("The AI service returned an unexpected response")
+        return result
+
+    @staticmethod
+    def _truncate(text_content: str) -> str:
+        """Keep prompts inside the model's context window and bound the cost."""
+        return text_content[:settings.AI_MAX_INPUT_CHARS]
 
     def generate_summary(self, text_content: str) -> dict:
         """
         Generate a summary and key points from text content
-        
+
         Returns:
             dict with 'full_summary' and 'key_points' keys
         """
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert at summarizing educational content. Create comprehensive summaries and extract key points."
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""Please provide a comprehensive summary of the following content and extract key points.
+        result = self._complete_json(
+            "You are an expert at summarizing educational content. "
+            "Create comprehensive summaries and extract key points. "
+            "Always respond with a JSON object.",
+            f"""Please provide a comprehensive summary of the following content and extract key points.
 
 Content:
-{text_content}
+{self._truncate(text_content)}
 
-Please provide:
-1. A detailed summary (3-5 paragraphs)
-2. A list of 5-10 key points (as a JSON array)
-
-Format your response as JSON:
+Respond with a JSON object in exactly this shape:
 {{
-    "full_summary": "detailed summary text here",
-    "key_points": ["point 1", "point 2", "point 3", ...]
-}}"""
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
+    "full_summary": "a detailed summary of 3-5 paragraphs, separated by blank lines",
+    "key_points": ["point 1", "point 2", "5 to 10 points in total"]
+}}""",
+            max_tokens=2000,
+        )
 
-            content = response.choices[0].message.content
-            
-            # Try to parse JSON from response
-            try:
-                # Extract JSON from markdown code blocks if present
-                json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                if json_match:
-                    result = json.loads(json_match.group())
-                else:
-                    result = json.loads(content)
-            except json.JSONDecodeError:
-                # Fallback: create structure from text
-                lines = content.split('\n')
-                summary_lines = []
-                key_points = []
-                in_key_points = False
-                
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if 'key point' in line.lower() or 'key points' in line.lower():
-                        in_key_points = True
-                        continue
-                    if in_key_points and (line.startswith('-') or line.startswith('•') or line[0].isdigit()):
-                        key_points.append(line.lstrip('- •0123456789. '))
-                    else:
-                        summary_lines.append(line)
-                
-                result = {
-                    'full_summary': '\n\n'.join(summary_lines) if summary_lines else content,
-                    'key_points': key_points if key_points else [content[:100] + "..."]
-                }
+        full_summary = result.get("full_summary")
+        if not isinstance(full_summary, str) or not full_summary.strip():
+            raise AIServiceError("The AI service returned a summary in an unexpected format")
 
-            return result
-
-        except Exception as e:
-            raise Exception(f"Error generating summary: {str(e)}")
+        key_points = result.get("key_points")
+        if not isinstance(key_points, list):
+            key_points = []
+        return {
+            "full_summary": full_summary.strip(),
+            "key_points": [str(point).strip() for point in key_points if str(point).strip()],
+        }
 
     def generate_flashcards(self, text_content: str, num_cards: int = 10) -> list:
         """
         Generate flashcards from text content
-        
+
         Args:
             text_content: The text to generate flashcards from
             num_cards: Number of flashcards to generate (default: 10)
-        
+
         Returns:
-            List of dictionaries with 'question' and 'answer' keys
+            List of dictionaries with 'question', 'answer' and 'category' keys
         """
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert at creating educational flashcards. Create clear, concise questions and comprehensive answers."
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""Generate {num_cards} flashcards from the following content. Each flashcard should have a clear question and a detailed answer.
+        result = self._complete_json(
+            "You are an expert at creating educational flashcards. "
+            "Create clear, concise questions and comprehensive answers. "
+            "Always respond with a JSON object.",
+            f"""Generate {num_cards} flashcards from the following content. Each flashcard should have a clear question and a detailed answer.
 
 Content:
-{text_content}
+{self._truncate(text_content)}
 
-Please provide the flashcards as a JSON array:
-[
-    {{
-        "question": "What is...?",
-        "answer": "Detailed answer here...",
-        "category": "Category name"
-    }},
-    ...
-]
+Respond with a JSON object in exactly this shape:
+{{
+    "flashcards": [
+        {{
+            "question": "What is...?",
+            "answer": "Detailed answer here...",
+            "category": "Category name"
+        }}
+    ]
+}}
 
-Make sure the questions cover the most important concepts and the answers are comprehensive but concise."""
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=3000
-            )
+Make sure the questions cover the most important concepts and the answers are comprehensive but concise.""",
+            max_tokens=4000,
+        )
 
-            content = response.choices[0].message.content
-            
-            # Try to parse JSON from response
-            try:
-                # Extract JSON array from markdown code blocks if present
-                json_match = re.search(r'\[.*\]', content, re.DOTALL)
-                if json_match:
-                    flashcards = json.loads(json_match.group())
-                else:
-                    flashcards = json.loads(content)
-            except json.JSONDecodeError:
-                # Fallback: parse text format
-                flashcards = []
-                lines = content.split('\n')
-                current_card = {}
-                
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        if current_card:
-                            flashcards.append(current_card)
-                            current_card = {}
-                        continue
-                    
-                    if line.lower().startswith('question'):
-                        current_card['question'] = line.split(':', 1)[1].strip() if ':' in line else line
-                    elif line.lower().startswith('answer'):
-                        current_card['answer'] = line.split(':', 1)[1].strip() if ':' in line else line
-                    elif line.lower().startswith('category'):
-                        current_card['category'] = line.split(':', 1)[1].strip() if ':' in line else 'General'
-                    elif 'question' not in current_card:
-                        current_card['question'] = line
-                    elif 'answer' not in current_card:
-                        current_card['answer'] = line
-                    else:
-                        current_card['answer'] += ' ' + line
-                
-                if current_card:
-                    flashcards.append(current_card)
+        raw_cards = result.get("flashcards")
+        if not isinstance(raw_cards, list):
+            raise AIServiceError("The AI service returned flashcards in an unexpected format")
 
-            # Ensure all flashcards have required fields
-            for card in flashcards:
-                if 'question' not in card or not card['question']:
-                    card['question'] = "Question not generated"
-                if 'answer' not in card or not card['answer']:
-                    card['answer'] = "Answer not generated"
-                if 'category' not in card:
-                    card['category'] = 'General'
+        flashcards = []
+        for card in raw_cards:
+            if not isinstance(card, dict):
+                continue
+            question = str(card.get("question") or "").strip()
+            answer = str(card.get("answer") or "").strip()
+            if not question or not answer:
+                continue
+            flashcards.append({
+                "question": question,
+                "answer": answer,
+                "category": (str(card.get("category") or "").strip() or "General")[:100],
+            })
 
-            return flashcards[:num_cards]  # Limit to requested number
-
-        except Exception as e:
-            raise Exception(f"Error generating flashcards: {str(e)}")
-
+        if not flashcards:
+            raise AIServiceError("The AI service did not return any usable flashcards")
+        return flashcards[:num_cards]  # Limit to requested number

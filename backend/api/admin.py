@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import User, Document, Summary, Flashcard
+from .models import User, Document, Summary, Flashcard, StudySession
 
 
 @admin.register(User)
@@ -85,3 +85,12 @@ class FlashcardAdmin(admin.ModelAdmin):
         url = reverse('admin:api_user_change', args=[obj.user.pk])
         return format_html('<a href="{}">{}</a>', url, obj.user.email)
     user_link.short_description = 'User'
+
+
+@admin.register(StudySession)
+class StudySessionAdmin(admin.ModelAdmin):
+    list_display = ['user', 'duration_seconds', 'cards_reviewed', 'cards_mastered', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['user__email', 'user__username']
+    readonly_fields = ['created_at']
+    date_hierarchy = 'created_at'

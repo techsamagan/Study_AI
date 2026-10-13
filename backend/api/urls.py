@@ -4,7 +4,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     register, user_profile, CustomTokenObtainPairView,
-    DocumentViewSet, SummaryViewSet, FlashcardViewSet, dashboard_stats
+    DocumentViewSet, SummaryViewSet, FlashcardViewSet, StudySessionViewSet,
+    dashboard_stats
 )
 from .admin_views import (
     admin_dashboard_stats, admin_users_list, admin_user_detail,
@@ -15,6 +16,7 @@ router = DefaultRouter()
 router.register(r'documents', DocumentViewSet, basename='document')
 router.register(r'summaries', SummaryViewSet, basename='summary')
 router.register(r'flashcards', FlashcardViewSet, basename='flashcard')
+router.register(r'study-sessions', StudySessionViewSet, basename='study-session')
 
 urlpatterns = [
     # Authentication
